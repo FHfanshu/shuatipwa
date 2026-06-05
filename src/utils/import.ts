@@ -130,6 +130,7 @@ function parseTextQuestions(text: string): RawQuestion[] {
         question,
         answer: answer.length > 0 ? answer : [''],
         explanation: explanationLine || otherLines.join('\n') || undefined,
+        type,
       };
       if (Object.keys(options).length > 0) {
         raw.options = options;
@@ -305,7 +306,7 @@ export async function importFullBackup(file: File): Promise<void> {
     await db.favorites.clear();
 
     if (data.banks) await db.banks.bulkAdd(data.banks);
-    for (const [bankId, questions] of Object.entries(data.questions || {})) {
+    for (const [_bankId, questions] of Object.entries(data.questions || {})) {
       await db.questions.bulkAdd(questions as Question[]);
     }
     if (data.records) await db.records.bulkAdd(data.records);

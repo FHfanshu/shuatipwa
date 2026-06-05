@@ -4,6 +4,7 @@ export type QuestionType = 'single' | 'multiple' | 'judge' | 'blank' | 'short';
 
 export interface Question {
   id: string;
+  bankId: string;
   type: QuestionType;
   question: string;
   options?: Record<string, string>; // { A: "xxx", B: "yyy" }
