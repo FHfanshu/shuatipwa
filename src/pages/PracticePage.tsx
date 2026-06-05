@@ -4,6 +4,7 @@ import { db } from '../db';
 import type { Question, PracticeMode, AnswerStatus } from '../types';
 import { shuffleArray } from '../utils/helper';
 import QuestionCard from '../components/QuestionCard';
+import QuestionOverview from '../components/QuestionOverview';
 import Icon from '../components/Icon';
 
 export default function PracticePage() {
@@ -16,6 +17,7 @@ export default function PracticePage() {
   const [examCount, setExamCount] = useState(50);
   const [examStarted, setExamStarted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showOverview, setShowOverview] = useState(false);
 
   useEffect(() => {
     if (!bankId || !mode) return;
@@ -285,6 +287,25 @@ export default function PracticePage() {
           下一题 <Icon name="arrow-right" size={14} />
         </button>
       </div>
+
+      {/* 悬浮总览按钮 */}
+      <button
+        onClick={() => setShowOverview(true)}
+        className="fixed right-4 bottom-24 z-40 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg active:bg-blue-700 flex items-center justify-center transition-transform active:scale-95"
+      >
+        <Icon name="list" size={22} />
+      </button>
+
+      {/* 题目总览面板 */}
+      {showOverview && (
+        <QuestionOverview
+          questions={questions}
+          results={results}
+          currentIndex={currentIndex}
+          onJump={setCurrentIndex}
+          onClose={() => setShowOverview(false)}
+        />
+      )}
     </div>
   );
 }
