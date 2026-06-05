@@ -43,7 +43,7 @@ export default function ImportPage() {
   return (
     <div className="px-4 pt-4 pb-24">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">导入题库</h1>
-      <p className="text-sm text-gray-500 mb-6">支持 JSON、CSV、Excel、TXT / Markdown</p>
+      <p className="text-sm text-gray-500 mb-6">支持 JSON、CSV、Excel、Word、TXT / Markdown</p>
 
       {/* 自定义名称 */}
       <div className="mb-4">
@@ -76,7 +76,7 @@ export default function ImportPage() {
           <div>
             <Icon name="folder" size={48} className="text-gray-400 mb-3" />
             <div className="font-medium text-gray-700 mb-1">点击或拖拽文件到这里</div>
-            <div className="text-xs text-gray-400">JSON / CSV / Excel / TXT / Markdown</div>
+            <div className="text-xs text-gray-400">JSON / CSV / Excel / Word / TXT / Markdown</div>
           </div>
         )}
       </div>
@@ -84,7 +84,7 @@ export default function ImportPage() {
       <input
         ref={fileRef}
         type="file"
-        accept=".json,.csv,.xlsx,.xls,.txt,.md"
+        accept=".json,.csv,.xlsx,.xls,.docx,.txt,.md"
         onChange={onFileSelect}
         className="hidden"
       />

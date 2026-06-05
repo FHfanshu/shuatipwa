@@ -1,7 +1,9 @@
 import { read, utils } from 'xlsx';
+import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
 import type { Question, QuestionBank, QuestionType } from '../types';
+import { parseTextToQuestions, inferQuestionType } from './textParser';
 
 // ============ JSON 导入 ============
 
@@ -238,12 +240,24 @@ export async function importFromFile(
     const buffer = await file.arrayBuffer();
     rawQuestions = parseExcel(buffer);
     if (!bankName) bankName = fileName.replace(/\.xlsx?$/i, '');
+  } else if (ext === 'docx') {
+    const buffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    const parsed = parseTextToQuestions(result.value);
+    rawQuestions = parsed.map(q => ({
+      question: q.question,
+      options: q.options,
+      answer: q.answer,
+      explanation: q.explanation,
+      type: q.type || inferQuestionType(q),
+    }));
+    if (!bankName) bankName = fileName.replace(/\.docx$/i, '');
   } else if (ext === 'txt' || ext === 'md') {
     const text = await file.text();
     rawQuestions = parseTextQuestions(text);
     if (!bankName) bankName = fileName.replace(/\.(txt|md)$/i, '');
   } else {
-    throw new Error(`不支持的文件格式: ${ext}。请使用 JSON、CSV、Excel 或文本文件。`);
+    throw new Error(`不支持的文件格式: ${ext}。请使用 JSON、CSV、Excel、Word 或文本文件。`);
   }
 
   if (rawQuestions.length === 0) {
