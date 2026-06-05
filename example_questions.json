@@ -1,0 +1,81 @@
+{
+  "name": "计算机基础示例题库",
+  "questions": [
+    {
+      "type": "single",
+      "question": "下列哪项属于操作系统？",
+      "options": { "A": "MySQL", "B": "Windows", "C": "HTML", "D": "Python" },
+      "answer": ["B"],
+      "explanation": "Windows 是微软开发的操作系统。MySQL 是数据库，HTML 是标记语言，Python 是编程语言。",
+      "tags": ["计算机基础"]
+    },
+    {
+      "type": "multiple",
+      "question": "以下哪些是编程语言？",
+      "options": { "A": "Java", "B": "Photoshop", "C": "C++", "D": "Excel" },
+      "answer": ["A", "C"],
+      "explanation": "Java 和 C++ 是编程语言，Photoshop 是图像处理软件，Excel 是电子表格软件。",
+      "tags": ["计算机基础"]
+    },
+    {
+      "type": "judge",
+      "question": "CPU 是计算机的核心部件。",
+      "answer": ["true"],
+      "explanation": "CPU（中央处理器）负责执行指令和处理数据，是计算机的核心。",
+      "tags": ["硬件"]
+    },
+    {
+      "type": "judge",
+      "question": "RAM 中的数据在断电后不会丢失。",
+      "answer": ["false"],
+      "explanation": "RAM（随机存取存储器）是易失性存储器，断电后数据会丢失。硬盘才是非易失性存储器。",
+      "tags": ["硬件"]
+    },
+    {
+      "type": "single",
+      "question": "IP 地址 127.0.0.1 代表什么？",
+      "options": { "A": "网关地址", "B": "广播地址", "C": "本机回环地址", "D": "DNS 服务器" },
+      "answer": ["C"],
+      "explanation": "127.0.0.1 是 IPv4 的回环地址，用于本机测试。",
+      "tags": ["网络"]
+    },
+    {
+      "type": "single",
+      "question": "HTTP 默认端口号是多少？",
+      "options": { "A": "21", "B": "80", "C": "443", "D": "8080" },
+      "answer": ["B"],
+      "explanation": "HTTP 默认端口 80，HTTPS 默认端口 443，FTP 默认端口 21。",
+      "tags": ["网络"]
+    },
+    {
+      "type": "blank",
+      "question": "世界上第一台电子计算机的名字缩写是 ____。",
+      "answer": ["ENIAC"],
+      "explanation": "ENIAC（Electronic Numerical Integrator and Computer）于 1946 年诞生于美国宾夕法尼亚大学。",
+      "tags": ["计算机历史"]
+    },
+    {
+      "type": "multiple",
+      "question": "以下属于关系型数据库的有？",
+      "options": { "A": "MongoDB", "B": "MySQL", "C": "PostgreSQL", "D": "Redis" },
+      "answer": ["B", "C"],
+      "explanation": "MySQL 和 PostgreSQL 是关系型数据库，MongoDB 是文档数据库，Redis 是键值数据库。",
+      "tags": ["数据库"]
+    },
+    {
+      "type": "short",
+      "question": "简述 OSI 七层模型的主要层次（写出至少 5 层即可）。",
+      "answer": ["物理层、数据链路层、网络层、传输层、会话层、表示层、应用层"],
+      "explanation": "OSI 模型从下到上：物理层、数据链路层、网络层、传输层、会话层、表示层、应用层。",
+      "tags": ["网络"]
+    },
+    {
+      "type": "single",
+      "question": "Git 中用于查看提交历史的命令是？",
+      "options": { "A": "git status", "B": "git log", "C": "git diff", "D": "git show" },
+      "answer": ["B"],
+      "explanation": "git log 显示提交历史记录。git status 查看工作区状态，git diff 查看差异。",
+      "tags": ["开发工具"]
+    }
+  ]
+}
