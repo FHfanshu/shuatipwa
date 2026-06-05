@@ -42,7 +42,7 @@ export default function ImportPage() {
 
   return (
     <div className="px-5 pt-6">
-      <h1 className="text-[2rem] font-semibold tracking-tight text-text-primary mb-2">导入题库</h1>
+      <h1 className="font-display text-[2rem] font-semibold tracking-tight text-text-primary mb-2">导入题库</h1>
       <p className="text-sm text-text-secondary mb-6">支持 JSON、CSV、Excel、Word、TXT / Markdown</p>
 
       {/* 自定义名称 */}

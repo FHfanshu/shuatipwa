@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../db';
 import type { Question, PracticeMode, AnswerStatus } from '../types';
@@ -6,6 +6,11 @@ import { shuffleArray } from '../utils/helper';
 import QuestionCard from '../components/QuestionCard';
 import QuestionOverview from '../components/QuestionOverview';
 import Icon from '../components/Icon';
+
+interface SavedProgress {
+  currentIndex: number;
+  results: Record<number, AnswerStatus>;
+}
 
 export default function PracticePage() {
   const { bankId, mode } = useParams<{ bankId: string; mode: PracticeMode }>();
@@ -18,6 +23,15 @@ export default function PracticePage() {
   const [examStarted, setExamStarted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showOverview, setShowOverview] = useState(false);
+  const [savedProgress, setSavedProgress] = useState<SavedProgress | null>(null);
+  const [restored, setRestored] = useState(false);
+  const [questionStates, setQuestionStates] = useState<Map<number, {
+    userAnswer: string[];
+    blankInput: string;
+    submitted: boolean;
+    status: AnswerStatus;
+  }>>(new Map());
+  const lastSavedRef = useRef<string>('');
 
   useEffect(() => {
     if (!bankId || !mode) return;
@@ -66,13 +80,67 @@ export default function PracticePage() {
       setLoading(false);
       setCurrentIndex(0);
       setResults({});
+      setRestored(false);
+      lastSavedRef.current = '';
+
+      // Check for saved progress in sequential mode
+      if (mode === 'sequential') {
+        const saved = localStorage.getItem(`practice-progress-${bankId}-${mode}`);
+        if (saved) {
+          try {
+            const progress: SavedProgress = JSON.parse(saved);
+            if (progress.currentIndex < qs.length) {
+              setSavedProgress(progress);
+            }
+          } catch (e) {
+            localStorage.removeItem(`practice-progress-${bankId}-${mode}`);
+          }
+        }
+      }
     };
 
     loadQuestions();
   }, [bankId, mode, examStarted, examCount]);
 
+  // Restore saved progress after questions are loaded
+  useEffect(() => {
+    if (savedProgress && questions.length > 0 && !restored) {
+      setCurrentIndex(savedProgress.currentIndex);
+      setResults(savedProgress.results);
+      setSavedProgress(null);
+      setRestored(true);
+    } else if (questions.length > 0 && !savedProgress && !restored) {
+      setRestored(true);
+    }
+  }, [savedProgress, questions.length, restored]);
+
+  // Save progress for sequential modes (only after restoration is complete)
+  useEffect(() => {
+    if (mode === 'sequential' && questions.length > 0 && bankId && restored) {
+      const stateString = JSON.stringify({ currentIndex, results });
+      if (stateString !== lastSavedRef.current) {
+        const progress: SavedProgress = { currentIndex, results };
+        localStorage.setItem(`practice-progress-${bankId}-${mode}`, JSON.stringify(progress));
+        lastSavedRef.current = stateString;
+      }
+    }
+  }, [currentIndex, results, mode, bankId, questions.length, restored]);
+
   const handleAnswer = useCallback((index: number, status: AnswerStatus) => {
     setResults(prev => ({ ...prev, [index]: status }));
+  }, []);
+
+  const handleSaveQuestionState = useCallback((index: number, state: {
+    userAnswer: string[];
+    blankInput: string;
+    submitted: boolean;
+    status: AnswerStatus;
+  }) => {
+    setQuestionStates(prev => {
+      const next = new Map(prev);
+      next.set(index, state);
+      return next;
+    });
   }, []);
 
   const handleAutoAdvance = useCallback(() => {
@@ -246,6 +314,8 @@ export default function PracticePage() {
           total={questions.length}
           onAnswer={status => handleAnswer(currentIndex, status)}
           onAutoAdvance={handleAutoAdvance}
+          onStateChange={state => handleSaveQuestionState(currentIndex, state)}
+          savedState={questionStates.get(currentIndex)}
           showAnswerImmediately={mode !== 'exam'}
         />
       </div>

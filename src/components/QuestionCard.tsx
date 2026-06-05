@@ -13,10 +13,22 @@ interface Props {
   total: number;
   onAnswer?: (status: AnswerStatus) => void;
   onAutoAdvance?: () => void;
+  onStateChange?: (state: {
+    userAnswer: string[];
+    blankInput: string;
+    submitted: boolean;
+    status: AnswerStatus;
+  }) => void;
+  savedState?: {
+    userAnswer: string[];
+    blankInput: string;
+    submitted: boolean;
+    status: AnswerStatus;
+  };
   showAnswerImmediately?: boolean;
 }
 
-export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, showAnswerImmediately = true }: Props) {
+export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, onStateChange, savedState, showAnswerImmediately = true }: Props) {
   const [userAnswer, setUserAnswer] = useState<string[]>([]);
   const [blankInput, setBlankInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -32,10 +44,18 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const isSelfGrade = question.type === 'blank' || question.type === 'short';
 
   useEffect(() => {
-    setUserAnswer([]);
-    setBlankInput('');
-    setSubmitted(false);
-    setStatus('unanswered');
+    // Restore saved state if available
+    if (savedState) {
+      setUserAnswer(savedState.userAnswer);
+      setBlankInput(savedState.blankInput);
+      setSubmitted(savedState.submitted);
+      setStatus(savedState.status);
+    } else {
+      setUserAnswer([]);
+      setBlankInput('');
+      setSubmitted(false);
+      setStatus('unanswered');
+    }
     setAiExplanation('');
     setAiLoading(false);
     setAiError('');
@@ -45,7 +65,14 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       autoAdvanceTimerRef.current = null;
     }
     abortRef.current?.abort();
-  }, [question.id]);
+  }, [question.id, savedState]);
+
+  // Notify parent of state changes
+  useEffect(() => {
+    if (onStateChange && (submitted || userAnswer.length > 0 || blankInput)) {
+      onStateChange({ userAnswer, blankInput, submitted, status });
+    }
+  }, [userAnswer, blankInput, submitted, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     db.favorites.where('[bankId+questionId]').equals([bankId, question.id]).first().then(f => {
@@ -58,7 +85,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance) {
       autoAdvanceTimerRef.current = setTimeout(() => {
         onAutoAdvance();
-      }, 800);
+      }, 450);
       return () => {
         if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
       };
@@ -297,9 +324,9 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
           )}
 
           {!isSelfGrade && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${status === 'correct' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all duration-200 ${status === 'correct' ? 'bg-emerald-500/15 text-emerald-500 animate-[fadeOut_0.4s_ease-in_0.05s_forwards]' : 'bg-red-500/10 text-red-500'}`}>
               <Icon name={status === 'correct' ? 'check-circle' : 'x-circle'} size={20} />
-              <span className="font-medium">{status === 'correct' ? '回答正确！' : '回答错误'}</span>
+              <span className="font-medium">{status === 'correct' ? '✓ 正确' : '回答错误'}</span>
               {status === 'wrong' && (
                 <span className="ml-auto text-sm">正确答案: {question.answer.join(', ')}</span>
               )}

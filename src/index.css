@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -212,7 +212,7 @@ body {
 }
 
 .font-display {
-  font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  font-family: "Cormorant Garamond", "Noto Serif SC", Georgia, "Times New Roman", serif;
 }
 
 /* 全局滚动逻辑：内容超出才允许滚动 */
@@ -248,6 +248,10 @@ html, body {
 .reveal-delay-10 { animation-delay: 0.60s; }
 
 /* ── Progress ring ── */
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0.3; transform: translateY(-2px); }
+}
 @keyframes ring-fill {
   from { stroke-dashoffset: var(--ring-circumference); }
   to   { stroke-dashoffset: var(--ring-offset); }
