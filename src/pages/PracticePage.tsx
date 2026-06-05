@@ -246,7 +246,7 @@ export default function PracticePage() {
       </div>
 
       {/* 底部导航 */}
-      <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 shrink-0 safe-area-bottom">
+      <div className="bg-white border-t border-gray-200 px-4 pt-3 pb-5 flex items-center gap-3 shrink-0 safe-area-bottom">
         <button
           onClick={goPrev}
           disabled={currentIndex === 0}
