@@ -209,9 +209,9 @@ export default function PracticePage() {
   const currentQuestion = questions[currentIndex];
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50">
       {/* 顶部栏 */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
         <button onClick={() => navigate(-1)} className="text-blue-600 text-sm flex items-center gap-1">
           <Icon name="arrow-left" size={16} /> 返回
         </button>
@@ -224,7 +224,7 @@ export default function PracticePage() {
       </div>
 
       {/* 进度条 */}
-      <div className="h-1 bg-gray-200">
+      <div className="h-1 bg-gray-200 shrink-0">
         <div
           className="h-full bg-blue-500 transition-all duration-300"
           style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
@@ -232,7 +232,7 @@ export default function PracticePage() {
       </div>
 
       {/* 题目卡片 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
         <QuestionCard
           question={currentQuestion}
           bankId={bankId!}
@@ -244,7 +244,7 @@ export default function PracticePage() {
       </div>
 
       {/* 底部导航 */}
-      <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 sticky bottom-0">
+      <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 shrink-0 safe-area-bottom">
         <button
           onClick={goPrev}
           disabled={currentIndex === 0}

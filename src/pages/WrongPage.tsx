@@ -48,8 +48,8 @@ export default function WrongPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+    <div className="flex flex-col h-screen bg-gray-50">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
         <button onClick={() => navigate(-1)} className="text-blue-600 text-sm flex items-center gap-1">
           <Icon name="arrow-left" size={16} /> 返回
         </button>
@@ -59,7 +59,7 @@ export default function WrongPage() {
         <div className="text-sm text-gray-500">{wrongQuestions.length} 题</div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
         {wrongQuestions.length > 0 && (
           <QuestionCard
             question={wrongQuestions[currentIndex]}
@@ -70,7 +70,7 @@ export default function WrongPage() {
         )}
       </div>
 
-      <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 sticky bottom-0">
+      <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 shrink-0 safe-area-bottom">
         <button
           onClick={() => setCurrentIndex(p => Math.max(0, p - 1))}
           disabled={currentIndex === 0}
