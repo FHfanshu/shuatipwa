@@ -4,6 +4,7 @@ import { db } from '../db';
 import { useState } from 'react';
 import QuestionCard from '../components/QuestionCard';
 import Icon from '../components/Icon';
+import { getCurrentWrongQuestionIds } from '../utils/helper';
 
 export default function WrongPage() {
   const { bankId } = useParams<{ bankId: string }>();
@@ -11,19 +12,11 @@ export default function WrongPage() {
 
   const wrongQuestions = useLiveQuery(async () => {
     if (!bankId) return [];
-    const records = await db.records.where('bankId').equals(bankId).reverse().sortBy('timestamp');
-    const wrongIds = new Set<string>();
-    const answeredCorrectly = new Set<string>();
-    for (const r of records) {
-      if (r.status === 'wrong' && !answeredCorrectly.has(r.questionId)) {
-        wrongIds.add(r.questionId);
-      }
-      if (r.status === 'correct') {
-        answeredCorrectly.add(r.questionId);
-        wrongIds.delete(r.questionId);
-      }
-    }
-    return db.questions.where('id').anyOf([...wrongIds]).toArray();
+    const records = await db.records.where('bankId').equals(bankId).toArray();
+    const wrongIds = getCurrentWrongQuestionIds(records);
+    return wrongIds.length > 0
+      ? db.questions.where('id').anyOf(wrongIds).toArray()
+      : [];
   }, [bankId]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -47,6 +40,13 @@ export default function WrongPage() {
     );
   }
 
+  const safeIndex = Math.min(currentIndex, wrongQuestions.length - 1);
+  const currentQuestion = wrongQuestions[safeIndex];
+
+  if (!currentQuestion) {
+    return <div className="flex items-center justify-center h-64 text-text-muted">加载中...</div>;
+  }
+
   return (
     <div className="flex flex-col h-dvh bg-bg-primary">
       <div className="bg-bg-card border-b border-border-subtle px-4 py-3 flex items-center justify-between shrink-0">
@@ -62,9 +62,9 @@ export default function WrongPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
         {wrongQuestions.length > 0 && (
           <QuestionCard
-            question={wrongQuestions[currentIndex]}
+            question={currentQuestion}
             bankId={bankId!}
-            index={currentIndex}
+            index={safeIndex}
             total={wrongQuestions.length}
           />
         )}
@@ -72,18 +72,18 @@ export default function WrongPage() {
 
       <div className="bg-bg-card border-t border-border-subtle px-4 py-3 flex items-center gap-3 shrink-0 safe-area-bottom">
         <button
-          onClick={() => setCurrentIndex(p => Math.max(0, p - 1))}
-          disabled={currentIndex === 0}
+          onClick={() => setCurrentIndex(Math.max(0, safeIndex - 1))}
+          disabled={safeIndex === 0}
           className="px-4 py-2.5 bg-bg-secondary text-text-secondary rounded-xl text-sm font-medium disabled:opacity-30 flex items-center gap-1"
         >
           <Icon name="arrow-left" size={14} /> 上一题
         </button>
         <div className="flex-1 text-center text-sm text-text-secondary">
-          {currentIndex + 1} / {wrongQuestions.length}
+          {safeIndex + 1} / {wrongQuestions.length}
         </div>
         <button
-          onClick={() => setCurrentIndex(p => Math.min(wrongQuestions.length - 1, p + 1))}
-          disabled={currentIndex >= wrongQuestions.length - 1}
+          onClick={() => setCurrentIndex(Math.min(wrongQuestions.length - 1, safeIndex + 1))}
+          disabled={safeIndex >= wrongQuestions.length - 1}
           className="px-4 py-2.5 bg-accent text-white rounded-xl text-sm font-medium disabled:opacity-30 flex items-center gap-1"
         >
           下一题 <Icon name="arrow-right" size={14} />

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../db';
 import type { Question, PracticeMode, AnswerStatus } from '../types';
-import { shuffleArray } from '../utils/helper';
+import { getCurrentWrongQuestionIds, shuffleArray } from '../utils/helper';
 import QuestionCard from '../components/QuestionCard';
 import QuestionOverview from '../components/QuestionOverview';
 import Icon from '../components/Icon';
@@ -30,6 +30,7 @@ export default function PracticePage() {
     blankInput: string;
     submitted: boolean;
     status: AnswerStatus;
+    recordId?: number | null;
   }>>(new Map());
   const lastSavedRef = useRef<string>('');
 
@@ -38,22 +39,14 @@ export default function PracticePage() {
 
     const loadQuestions = async () => {
       setLoading(true);
-      let qs: Question[] = [];
+      let qs: Question[];
 
       if (mode === 'wrong') {
-        const records = await db.records.where('bankId').equals(bankId).reverse().sortBy('timestamp');
-        const wrongIds = new Set<string>();
-        const answeredCorrectly = new Set<string>();
-        for (const r of records) {
-          if (r.status === 'wrong' && !answeredCorrectly.has(r.questionId)) {
-            wrongIds.add(r.questionId);
-          }
-          if (r.status === 'correct') {
-            answeredCorrectly.add(r.questionId);
-            wrongIds.delete(r.questionId);
-          }
-        }
-        qs = await db.questions.where('id').anyOf([...wrongIds]).toArray();
+        const records = await db.records.where('bankId').equals(bankId).toArray();
+        const wrongIds = getCurrentWrongQuestionIds(records);
+        qs = wrongIds.length > 0
+          ? await db.questions.where('id').anyOf(wrongIds).toArray()
+          : [];
       } else if (mode === 'favorite') {
         const favs = await db.favorites.where('bankId').equals(bankId).toArray();
         const favIds = favs.map(f => f.questionId);
@@ -92,7 +85,7 @@ export default function PracticePage() {
             if (progress.currentIndex < qs.length) {
               setSavedProgress(progress);
             }
-          } catch (e) {
+          } catch {
             localStorage.removeItem(`practice-progress-${bankId}-${mode}`);
           }
         }
@@ -135,6 +128,7 @@ export default function PracticePage() {
     blankInput: string;
     submitted: boolean;
     status: AnswerStatus;
+    recordId?: number | null;
   }) => {
     setQuestionStates(prev => {
       const next = new Map(prev);
@@ -165,6 +159,9 @@ export default function PracticePage() {
   // 考试模式选择题量
   if (mode === 'exam' && !examStarted) {
     const maxCount = questions.length;
+    const examOptions = Array.from(new Set(
+      [20, 50, 100].filter(n => n < maxCount).concat(maxCount > 0 ? [maxCount] : [])
+    ));
     return (
       <div className="px-4 pt-4 pb-8">
         <button onClick={() => navigate(-1)} className="text-accent text-sm mb-4 flex items-center gap-1">
@@ -176,7 +173,12 @@ export default function PracticePage() {
         <p className="text-sm text-text-secondary mb-6">题库共 {maxCount} 题，选择考试题数</p>
 
         <div className="space-y-3">
-          {[20, 50, 100].filter(n => n <= maxCount).concat(maxCount <= 100 ? [] : [maxCount]).map(n => (
+          {examOptions.length === 0 && (
+            <div className="rounded-xl border border-border-subtle bg-bg-card p-4 text-sm text-text-secondary">
+              题库为空，无法开始考试。
+            </div>
+          )}
+          {examOptions.map(n => (
             <button
               key={n}
               onClick={() => { setExamCount(n); setExamStarted(true); }}

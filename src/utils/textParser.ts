@@ -21,6 +21,10 @@ interface ParsedQuestion {
   type?: QuestionType;
 }
 
+const questionNumberPattern = /^(?:第\s*)?\d+\s*(?:[.、．)）]|题)\s*/;
+const answerPattern = /(?:\(?正确\)?答案|答案|answer|答)\s*[：:]\s*(.*?)(?=\s+[A-Za-z][.、．:：]\s|\s*(?:解析|解释|说明|分析)\s*[：:]|$)/i;
+const explanationPattern = /(?:解析|解释|说明|分析)\s*[：:]\s*(.*)$/i;
+
 // ============ 主入口 ============
 
 export function parseTextToQuestions(text: string): ParsedQuestion[] {
@@ -35,7 +39,7 @@ export function parseTextToQuestions(text: string): ParsedQuestion[] {
     if (/^[一二三四五六七八九十]+[、.．]\s*$/.test(line)) continue;
 
     // 检测新题号
-    const isNewQuestion = /^(?:第\s*)?\d+[.、．\)）]/.test(line);
+    const isNewQuestion = questionNumberPattern.test(line);
 
     if (isNewQuestion && currentBlock.length > 0) {
       blocks.push(currentBlock);
@@ -73,8 +77,7 @@ function parseBlock(lines: string[]): ParsedQuestion | null {
   const answerPart = parts.length > 1 ? parts[1].trim() : '';
 
   // 去掉题号
-  const questionText = questionPart.replace(/^(?:第\s*)?\d+[.、．\)）]\s*/, '').trim();
-  if (!questionText) return null;
+  let questionText = questionPart.replace(questionNumberPattern, '').trim();
 
   const options: Record<string, string> = {};
   let answerLine = '';
@@ -86,9 +89,37 @@ function parseBlock(lines: string[]): ParsedQuestion | null {
     if (ansMatch) answerLine = ansMatch[1].trim();
   }
 
+  const inlineAnswer = extractAnswer(questionText);
+  if (!answerLine && inlineAnswer.answer) answerLine = inlineAnswer.answer;
+  questionText = inlineAnswer.text;
+
+  const inlineExplanation = extractExplanation(questionText);
+  if (inlineExplanation.explanation) explanationLine = inlineExplanation.explanation;
+  questionText = inlineExplanation.text;
+
+  const inlineOptions = extractInlineOptions(questionText);
+  Object.assign(options, inlineOptions.options);
+  questionText = inlineOptions.text;
+
+  if (!questionText) return null;
+
   // 解析后续行
   for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
+    let line = lines[i];
+
+    const lineAnswer = extractAnswer(line);
+    if (!answerLine && lineAnswer.answer) answerLine = lineAnswer.answer;
+    line = lineAnswer.text;
+
+    const lineExplanation = extractExplanation(line);
+    if (lineExplanation.explanation) explanationLine = lineExplanation.explanation;
+    line = lineExplanation.text;
+
+    const lineOptions = extractInlineOptions(line);
+    if (Object.keys(lineOptions.options).length > 0) {
+      Object.assign(options, lineOptions.options);
+      continue;
+    }
 
     // 选项行
     const optMatch = line.match(/^([A-Za-z])[.、．:：]\s*(.*)/);
@@ -132,7 +163,7 @@ function parseBlock(lines: string[]): ParsedQuestion | null {
 function parseAnswer(raw: string): string[] {
   if (!raw) return [];
 
-  const cleaned = raw.trim();
+  const cleaned = raw.trim().replace(/[。.;；]+$/g, '').trim();
 
   // 判断题
   if (/^(对|正确|√|T|true|是)$/i.test(cleaned)) return ['true'];
@@ -170,6 +201,40 @@ function cleanQuestion(text: string): string {
   // HTML 实体
   text = text.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
   return text.trim();
+}
+
+function extractAnswer(text: string): { text: string; answer: string } {
+  const match = text.match(answerPattern);
+  if (!match) return { text, answer: '' };
+  return {
+    text: text.replace(answerPattern, '').trim(),
+    answer: match[1].replace(/[。.;；]+$/g, '').trim(),
+  };
+}
+
+function extractExplanation(text: string): { text: string; explanation: string } {
+  const match = text.match(explanationPattern);
+  if (!match) return { text, explanation: '' };
+  return {
+    text: text.replace(explanationPattern, '').trim(),
+    explanation: match[1].trim(),
+  };
+}
+
+function extractInlineOptions(text: string): { text: string; options: Record<string, string> } {
+  const options: Record<string, string> = {};
+  const optionPattern = /(^|\s)([A-Za-z])[.、．:：]\s*(.*?)(?=\s+[A-Za-z][.、．:：]\s|\s*(?:\(?正确\)?答案|答案|answer|答|解析|解释|说明|分析)\s*[：:]|$)/g;
+  const cleaned = text.replace(optionPattern, (match, leading: string, key: string, value: string) => {
+    const optionText = value.trim();
+    if (!optionText) return match;
+    options[key.toUpperCase()] = optionText;
+    return leading ? ' ' : '';
+  });
+
+  return {
+    text: cleaned.trim(),
+    options,
+  };
 }
 
 // ============ 推断题型 ============

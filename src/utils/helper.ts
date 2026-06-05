@@ -1,4 +1,4 @@
-import type { Question, QuestionType, AnswerStatus } from '../types';
+import type { Question, QuestionType, AnswerStatus, PracticeRecord } from '../types';
 
 /**
  * 判分：比较用户答案和正确答案
@@ -57,4 +57,24 @@ export function shuffleArray<T>(array: T[]): T[] {
     [result[i], result[j]] = [result[j], result[i]];
   }
   return result;
+}
+
+/**
+ * 错题本以每道题最新一次有效作答为准。
+ */
+export function getCurrentWrongQuestionIds(records: PracticeRecord[]): string[] {
+  const latestStatus = new Map<string, AnswerStatus>();
+  const ordered = [...records].sort((a, b) =>
+    a.timestamp - b.timestamp || (a.id ?? 0) - (b.id ?? 0)
+  );
+
+  for (const record of ordered) {
+    if (record.status === 'correct' || record.status === 'wrong') {
+      latestStatus.set(record.questionId, record.status);
+    }
+  }
+
+  return [...latestStatus.entries()]
+    .filter(([, status]) => status === 'wrong')
+    .map(([questionId]) => questionId);
 }

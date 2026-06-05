@@ -18,12 +18,14 @@ interface Props {
     blankInput: string;
     submitted: boolean;
     status: AnswerStatus;
+    recordId?: number | null;
   }) => void;
   savedState?: {
     userAnswer: string[];
     blankInput: string;
     submitted: boolean;
     status: AnswerStatus;
+    recordId?: number | null;
   };
   showAnswerImmediately?: boolean;
 }
@@ -38,8 +40,11 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [showExplanation, setShowExplanation] = useState(false);
+  const [recordId, setRecordId] = useState<number | null>(null);
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recordIdRef = useRef<number | null>(null);
+  const submittedAnswerRef = useRef<string[]>([]);
 
   const isSelfGrade = question.type === 'blank' || question.type === 'short';
 
@@ -50,11 +55,19 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       setBlankInput(savedState.blankInput);
       setSubmitted(savedState.submitted);
       setStatus(savedState.status);
+      setRecordId(savedState.recordId ?? null);
+      recordIdRef.current = savedState.recordId ?? null;
+      submittedAnswerRef.current = savedState.blankInput.trim()
+        ? [savedState.blankInput.trim()]
+        : savedState.userAnswer;
     } else {
       setUserAnswer([]);
       setBlankInput('');
       setSubmitted(false);
       setStatus('unanswered');
+      setRecordId(null);
+      recordIdRef.current = null;
+      submittedAnswerRef.current = [];
     }
     setAiExplanation('');
     setAiLoading(false);
@@ -65,14 +78,14 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       autoAdvanceTimerRef.current = null;
     }
     abortRef.current?.abort();
-  }, [question.id, savedState]);
+  }, [question.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Notify parent of state changes
   useEffect(() => {
     if (onStateChange && (submitted || userAnswer.length > 0 || blankInput)) {
-      onStateChange({ userAnswer, blankInput, submitted, status });
+      onStateChange({ userAnswer, blankInput, submitted, status, recordId });
     }
-  }, [userAnswer, blankInput, submitted, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userAnswer, blankInput, submitted, status, recordId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     db.favorites.where('[bankId+questionId]').equals([bankId, question.id]).first().then(f => {
@@ -92,15 +105,32 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     }
   }, [submitted, status, showAnswerImmediately, onAutoAdvance]);
 
-  // Self-graded questions: notify parent when user clicks 我答对了/我答错了
-  useEffect(() => {
-    if (submitted && isSelfGrade && (status === 'correct' || status === 'wrong')) {
-      onAnswer?.(status);
+  async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number) {
+    if (recordIdRef.current !== null) {
+      await db.records.update(recordIdRef.current, {
+        userAnswer: answer,
+        status: nextStatus,
+        timestamp,
+      });
+      return;
     }
-  }, [submitted, isSelfGrade, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const nextRecordId = await db.records.add({
+      bankId,
+      questionId: question.id,
+      userAnswer: answer,
+      status: nextStatus,
+      timestamp,
+    });
+    if (typeof nextRecordId === 'number') {
+      recordIdRef.current = nextRecordId;
+      setRecordId(nextRecordId);
+    }
+  }
 
   const toggleOption = (opt: string) => {
     if (submitted) return;
+
     if (question.type === 'single' || question.type === 'judge') {
       setUserAnswer([opt]);
     } else {
@@ -119,17 +149,31 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     if (answer.length === 0) return;
 
     const result = checkAnswer(question, answer);
-    setStatus(result);
+    submittedAnswerRef.current = answer;
     setSubmitted(true);
 
-    db.records.add({
-      bankId,
-      questionId: question.id,
-      userAnswer: answer,
-      status: result,
-      timestamp: Date.now(),
-    });
+    if (isSelfGrade && showAnswerImmediately) {
+      setStatus('unanswered');
+      return;
+    }
+
+    setStatus(result);
+    void saveRecord(result, answer, new Date().getTime());
     onAnswer?.(result);
+
+  };
+
+  const handleSelfGrade = (nextStatus: AnswerStatus) => {
+    if (!submitted) return;
+    const answer = submittedAnswerRef.current.length > 0
+      ? submittedAnswerRef.current
+      : blankInput.trim()
+        ? [blankInput.trim()]
+        : userAnswer;
+    setStatus(nextStatus);
+    void saveRecord(nextStatus, answer, new Date().getTime());
+    onAnswer?.(nextStatus);
+
   };
 
   const toggleFavorite = async () => {
@@ -177,7 +221,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   };
 
   return (
-    <div className="bg-bg-card rounded-2xl shadow-[0_18px_44px_-34px_rgba(31,111,235,0.55)] border border-border-subtle p-5">
+    <div className="bg-bg-card rounded-2xl border border-border-subtle p-5">
       {/* 头部 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -308,13 +352,13 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               <div className="text-sm text-text-secondary whitespace-pre-wrap">{question.answer.join(' / ')}</div>
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={() => setStatus('correct')}
+                  onClick={() => handleSelfGrade('correct')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] flex items-center gap-1 ${status === 'correct' ? 'bg-emerald-500 text-white' : 'bg-bg-card border border-emerald-500/35 text-emerald-500'}`}
                 >
                   <Icon name="check" size={14} /> 我答对了
                 </button>
                 <button
-                  onClick={() => setStatus('wrong')}
+                  onClick={() => handleSelfGrade('wrong')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] flex items-center gap-1 ${status === 'wrong' ? 'bg-red-500 text-white' : 'bg-bg-card border border-red-500/35 text-red-500'}`}
                 >
                   <Icon name="x" size={14} /> 我答错了
@@ -400,7 +444,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-4">
-              {aiLoading ? (
+              {aiLoading && !aiExplanation ? (
                 <div className="flex items-center justify-center gap-2 py-8 text-text-muted">
                   <span className="inline-block w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
                   <span className="text-sm">正在生成解析...</span>
@@ -410,6 +454,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               ) : (
                 <div className="text-sm text-text-primary leading-relaxed prose prose-sm max-w-none">
                   <ReactMarkdown>{aiExplanation}</ReactMarkdown>
+                  {aiLoading && <span className="inline-block w-1.5 h-4 bg-accent/60 ml-0.5 animate-pulse rounded-sm" />}
                 </div>
               )}
             </div>
