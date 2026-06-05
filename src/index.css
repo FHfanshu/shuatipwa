@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
+:root {
+  --ease-out-expo: cubic-bezier(0.15, 0.8, 0.2, 1);
+}
+
 /* 安全区域 */
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 全局：所有过渡动画统一先快后慢 */
+*, *::before, *::after {
+  transition-timing-function: var(--ease-out-expo) !important;
 }
 
 /* 上滑动画 */
@@ -11,16 +20,16 @@
   to { transform: translateY(0); }
 }
 .animate-slide-up {
-  animation: slide-up 0.3s ease-out;
+  animation: slide-up 0.3s var(--ease-out-expo);
 }
 
-/* 右侧滑入动画 - 先快后慢 */
+/* 右侧滑入动画 */
 @keyframes slide-in-right {
   from { transform: translateX(100%); opacity: 0.4; }
   to { transform: translateX(0); opacity: 1; }
 }
 .animate-slide-in-right {
-  animation: slide-in-right 0.3s cubic-bezier(0.15, 0.8, 0.2, 1);
+  animation: slide-in-right 0.3s var(--ease-out-expo);
 }
 
 /* 全局样式 */
