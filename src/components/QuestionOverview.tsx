@@ -96,7 +96,7 @@ export default function QuestionOverview({ questions, results, currentIndex, onJ
         {/* 题号网格 */}
         <div className="flex-1 overflow-y-auto px-3 py-2 min-h-0">
           <div className="grid grid-cols-7 gap-1.5">
-            {filtered.map(({ q, i }) => {
+            {filtered.map(({ i }) => {
               const result = results[i];
               const isCurrent = i === currentIndex;
 
