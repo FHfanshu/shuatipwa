@@ -326,7 +326,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
           {!isSelfGrade && (
             <div className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all duration-200 ${status === 'correct' ? 'bg-emerald-500/15 text-emerald-500 animate-[fadeOut_0.4s_ease-in_0.05s_forwards]' : 'bg-red-500/10 text-red-500'}`}>
               <Icon name={status === 'correct' ? 'check-circle' : 'x-circle'} size={20} />
-              <span className="font-medium">{status === 'correct' ? '✓ 正确' : '回答错误'}</span>
+              <span className="font-medium">{status === 'correct' ? '正确' : '回答错误'}</span>
               {status === 'wrong' && (
                 <span className="ml-auto text-sm">正确答案: {question.answer.join(', ')}</span>
               )}
