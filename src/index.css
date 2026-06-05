@@ -6,7 +6,7 @@
 
 /* 安全区域 */
 .safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px);
 }
 
 /* 全局：所有过渡动画统一先快后慢 */
