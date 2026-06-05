@@ -255,27 +255,16 @@ export default function PracticePage() {
           <Icon name="arrow-left" size={14} /> 上一题
         </button>
 
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex gap-1 overflow-x-auto px-2 py-1">
-            {questions.slice(Math.max(0, currentIndex - 3), currentIndex + 4).map((_, i) => {
-              const idx = Math.max(0, currentIndex - 3) + i;
-              const isCurrent = idx === currentIndex;
-              const result = results[idx];
-              let bg = 'bg-gray-200 text-gray-600';
-              if (isCurrent) bg = 'bg-blue-600 text-white';
-              else if (result === 'correct') bg = 'bg-green-500 text-white';
-              else if (result === 'wrong') bg = 'bg-red-500 text-white';
-
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentIndex(idx)}
-                  className={`w-7 h-7 rounded-full text-xs font-medium flex items-center justify-center ${bg}`}
-                >
-                  {idx + 1}
-                </button>
-              );
-            })}
+        {/* 进度指示器 */}
+        <div className="flex-1 flex flex-col items-center justify-center px-2">
+          <div className="text-sm font-medium text-gray-700 mb-1">
+            {currentIndex + 1} / {questions.length}
+          </div>
+          <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all"
+              style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+            />
           </div>
         </div>
 
