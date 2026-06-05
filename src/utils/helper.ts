@@ -38,11 +38,11 @@ export function getQuestionTypeLabel(type: QuestionType): string {
  */
 export function getQuestionTypeColor(type: QuestionType): string {
   const colors: Record<QuestionType, string> = {
-    single: 'bg-blue-100 text-blue-700',
-    multiple: 'bg-purple-100 text-purple-700',
-    judge: 'bg-orange-100 text-orange-700',
-    blank: 'bg-green-100 text-green-700',
-    short: 'bg-gray-100 text-gray-700',
+    single: 'bg-accent/10 text-accent',
+    multiple: 'bg-accent/10 text-accent',
+    judge: 'bg-bg-secondary text-text-secondary',
+    blank: 'bg-bg-secondary text-text-secondary',
+    short: 'bg-bg-secondary text-text-secondary',
   };
   return colors[type];
 }

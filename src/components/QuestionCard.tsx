@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Question, AnswerStatus } from '../types';
 import { checkAnswer, getQuestionTypeLabel, getQuestionTypeColor } from '../utils/helper';
+import { getAIConfig, streamExplanation } from '../utils/ai';
 import { db } from '../db';
 import Icon from './Icon';
+import ReactMarkdown from 'react-markdown';
 
 interface Props {
   question: Question;
@@ -10,21 +12,39 @@ interface Props {
   index: number;
   total: number;
   onAnswer?: (status: AnswerStatus) => void;
+  onAutoAdvance?: () => void;
   showAnswerImmediately?: boolean;
 }
 
-export default function QuestionCard({ question, bankId, index, total, onAnswer }: Props) {
+export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, showAnswerImmediately = true }: Props) {
   const [userAnswer, setUserAnswer] = useState<string[]>([]);
   const [blankInput, setBlankInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [status, setStatus] = useState<AnswerStatus>('unanswered');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [showExplanation, setShowExplanation] = useState(false);
+  const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const isSelfGrade = question.type === 'blank' || question.type === 'short';
 
   useEffect(() => {
     setUserAnswer([]);
     setBlankInput('');
     setSubmitted(false);
     setStatus('unanswered');
+    setAiExplanation('');
+    setAiLoading(false);
+    setAiError('');
+    setShowExplanation(false);
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    abortRef.current?.abort();
   }, [question.id]);
 
   useEffect(() => {
@@ -32,6 +52,25 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
       setIsFavorite(!!f);
     });
   }, [bankId, question.id]);
+
+  // Auto-advance on correct answer
+  useEffect(() => {
+    if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance) {
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        onAutoAdvance();
+      }, 800);
+      return () => {
+        if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      };
+    }
+  }, [submitted, status, showAnswerImmediately, onAutoAdvance]);
+
+  // Self-graded questions: notify parent when user clicks 我答对了/我答错了
+  useEffect(() => {
+    if (submitted && isSelfGrade && (status === 'correct' || status === 'wrong')) {
+      onAnswer?.(status);
+    }
+  }, [submitted, isSelfGrade, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleOption = (opt: string) => {
     if (submitted) return;
@@ -77,30 +116,61 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
     }
   };
 
-  const isSelfGrade = question.type === 'blank' || question.type === 'short';
+  const handleAIExplanation = async () => {
+    const config = getAIConfig();
+    if (!config) {
+      setAiError('请先在设置中配置 AI 接口');
+      return;
+    }
+    setAiLoading(true);
+    setAiError('');
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const questionText = question.question;
+      const correctText = question.options
+        ? question.answer.map(a => `${a}. ${question.options![a]}`).join(', ')
+        : question.answer.join(', ');
+      const userText = userAnswer.length > 0
+        ? (question.options ? userAnswer.map(a => `${a}. ${question.options![a]}`).join(', ') : userAnswer.join(', '))
+        : '(未作答)';
+
+      let fullText = '';
+      for await (const chunk of streamExplanation(questionText, correctText, userText, config, controller.signal)) {
+        fullText += chunk;
+        setAiExplanation(fullText);
+      }
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setAiError(err instanceof Error ? err.message : 'AI 解析生成失败');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <div className="bg-bg-card rounded-2xl shadow-[0_18px_44px_-34px_rgba(31,111,235,0.55)] border border-border-subtle p-5">
       {/* 头部 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400 font-mono">{index + 1}/{total}</span>
+          <span className="text-sm text-text-muted font-mono">{index + 1}/{total}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${getQuestionTypeColor(question.type)}`}>
             {getQuestionTypeLabel(question.type)}
           </span>
           {question.tags?.map(tag => (
-            <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+            <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-bg-secondary text-text-secondary">
               {tag}
             </span>
           ))}
         </div>
-        <button onClick={toggleFavorite} className="active:scale-90 transition-transform text-yellow-500">
+        <button onClick={toggleFavorite} className="active:scale-90 transition-transform text-accent">
           <Icon name={isFavorite ? 'star' : 'star-empty'} size={24} />
         </button>
       </div>
 
       {/* 题干 */}
-      <div className="text-base font-medium text-gray-900 mb-4 leading-relaxed whitespace-pre-wrap">
+      <div className="text-base font-medium text-text-primary mb-4 leading-relaxed whitespace-pre-wrap">
         {question.question}
       </div>
 
@@ -110,18 +180,20 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
           {Object.entries(question.options).map(([key, value]) => {
             const selected = userAnswer.includes(key);
             const isCorrect = question.answer.includes(key);
-            let optionClass = 'border-gray-200 bg-white hover:border-blue-300';
+            let optionClass = 'border-border-default bg-bg-card hover:border-accent/40';
 
-            if (submitted) {
+            if (submitted && showAnswerImmediately) {
               if (isCorrect) {
-                optionClass = 'border-green-500 bg-green-50 text-green-800';
+                optionClass = 'border-emerald-500/70 bg-emerald-500/10 text-text-primary';
               } else if (selected && !isCorrect) {
-                optionClass = 'border-red-500 bg-red-50 text-red-800';
+                optionClass = 'border-red-500/70 bg-red-500/10 text-text-primary';
               } else {
-                optionClass = 'border-gray-200 bg-gray-50 opacity-60';
+                optionClass = 'border-border-default bg-bg-secondary opacity-60';
               }
+            } else if (submitted && !showAnswerImmediately) {
+              optionClass = selected ? 'border-accent bg-accent/10 text-accent' : 'border-border-default bg-bg-card opacity-60';
             } else if (selected) {
-              optionClass = 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-200';
+              optionClass = 'border-accent bg-accent/10 text-accent ring-2 ring-accent/20';
             }
 
             return (
@@ -133,8 +205,8 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
               >
                 <span className="font-bold text-sm mt-0.5 shrink-0">{key}</span>
                 <span className="text-sm leading-relaxed">{value}</span>
-                {submitted && isCorrect && <Icon name="check" size={16} className="ml-auto text-green-600" />}
-                {submitted && selected && !isCorrect && <Icon name="x" size={16} className="ml-auto text-red-600" />}
+                {submitted && showAnswerImmediately && isCorrect && <Icon name="check" size={16} className="ml-auto text-emerald-500" />}
+                {submitted && showAnswerImmediately && selected && !isCorrect && <Icon name="x" size={16} className="ml-auto text-red-500" />}
               </button>
             );
           })}
@@ -147,13 +219,15 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
           {[{ key: 'true', label: '正确' }, { key: 'false', label: '错误' }].map(({ key, label }) => {
             const selected = userAnswer.includes(key);
             const isCorrect = question.answer.includes(key);
-            let cls = 'border-gray-200 bg-white';
-            if (submitted) {
-              if (isCorrect) cls = 'border-green-500 bg-green-50 text-green-800';
-              else if (selected) cls = 'border-red-500 bg-red-50 text-red-800';
-              else cls = 'border-gray-200 bg-gray-50 opacity-60';
+            let cls = 'border-border-default bg-bg-card text-text-primary';
+            if (submitted && showAnswerImmediately) {
+              if (isCorrect) cls = 'border-emerald-500/70 bg-emerald-500/10 text-text-primary';
+              else if (selected) cls = 'border-red-500/70 bg-red-500/10 text-text-primary';
+              else cls = 'border-border-default bg-bg-secondary opacity-60';
+            } else if (submitted && !showAnswerImmediately) {
+              cls = selected ? 'border-accent bg-accent/10 ring-2 ring-accent/20' : 'border-border-default bg-bg-card opacity-60';
             } else if (selected) {
-              cls = 'border-blue-500 bg-blue-50 ring-2 ring-blue-200';
+              cls = 'border-accent bg-accent/10 ring-2 ring-accent/20';
             }
             return (
               <button
@@ -178,7 +252,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
             onChange={e => setBlankInput(e.target.value)}
             disabled={submitted}
             placeholder={question.type === 'blank' ? '请输入答案...' : '请输入你的回答...'}
-            className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:outline-none resize-none disabled:bg-gray-50"
+            className="w-full border border-border-default rounded-xl px-4 py-3 text-sm focus:border-accent focus:ring-4 focus:ring-accent/10 focus:outline-none resize-none disabled:bg-bg-secondary bg-bg-card text-text-primary placeholder:text-text-muted transition-all"
             rows={question.type === 'short' ? 4 : 2}
           />
         </div>
@@ -192,29 +266,29 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
             (question.type !== 'blank' && question.type !== 'short' && userAnswer.length === 0) ||
             ((question.type === 'blank' || question.type === 'short') && !blankInput.trim())
           }
-          className="w-full py-3 bg-blue-600 text-white font-medium rounded-xl active:bg-blue-700 disabled:opacity-40 disabled:active:bg-blue-600 transition-colors"
+          className="w-full py-3 bg-accent text-white font-medium rounded-xl active:bg-accent-hover disabled:opacity-40 disabled:active:bg-accent transition-colors"
         >
           提交答案
         </button>
       )}
 
       {/* 结果 & 解析 */}
-      {submitted && (
+      {submitted && showAnswerImmediately && (
         <div className="mt-4 space-y-3">
           {isSelfGrade && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <div className="text-sm font-medium text-blue-800 mb-2">参考答案：</div>
-              <div className="text-sm text-blue-700 whitespace-pre-wrap">{question.answer.join(' / ')}</div>
+            <div className="bg-accent/10 border border-accent/25 rounded-xl p-4">
+              <div className="text-sm font-medium text-text-primary mb-2">参考答案：</div>
+              <div className="text-sm text-text-secondary whitespace-pre-wrap">{question.answer.join(' / ')}</div>
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={() => { setStatus('correct'); onAnswer?.('correct'); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${status === 'correct' ? 'bg-green-500 text-white' : 'bg-white border border-green-300 text-green-700'}`}
+                  onClick={() => setStatus('correct')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] flex items-center gap-1 ${status === 'correct' ? 'bg-emerald-500 text-white' : 'bg-bg-card border border-emerald-500/35 text-emerald-500'}`}
                 >
                   <Icon name="check" size={14} /> 我答对了
                 </button>
                 <button
-                  onClick={() => { setStatus('wrong'); onAnswer?.('wrong'); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${status === 'wrong' ? 'bg-red-500 text-white' : 'bg-white border border-red-300 text-red-700'}`}
+                  onClick={() => setStatus('wrong')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] flex items-center gap-1 ${status === 'wrong' ? 'bg-red-500 text-white' : 'bg-bg-card border border-red-500/35 text-red-500'}`}
                 >
                   <Icon name="x" size={14} /> 我答错了
                 </button>
@@ -223,7 +297,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
           )}
 
           {!isSelfGrade && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${status === 'correct' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${status === 'correct' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
               <Icon name={status === 'correct' ? 'check-circle' : 'x-circle'} size={20} />
               <span className="font-medium">{status === 'correct' ? '回答正确！' : '回答错误'}</span>
               {status === 'wrong' && (
@@ -232,14 +306,87 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer 
             </div>
           )}
 
-          {question.explanation && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <div className="text-sm font-medium text-amber-800 mb-1 flex items-center gap-1">
-                <Icon name="lightbulb" size={14} /> 解析
-              </div>
-              <div className="text-sm text-amber-700 leading-relaxed whitespace-pre-wrap">{question.explanation}</div>
-            </div>
+          {(question.explanation || status === 'wrong') && (
+            <button
+              onClick={() => {
+                if (question.explanation) {
+                  setShowExplanation(true);
+                } else {
+                  handleAIExplanation();
+                }
+              }}
+              className="w-full py-3 bg-accent/10 text-accent border border-accent/25 rounded-xl text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <Icon name="lightbulb" size={16} />
+              {question.explanation ? '查看解析' : aiExplanation ? '查看 AI 解析' : '生成 AI 解析'}
+            </button>
           )}
+        </div>
+      )}
+      {submitted && !showAnswerImmediately && (
+        <div className="mt-4 bg-bg-secondary border border-border-subtle rounded-xl p-3 text-center text-sm text-text-secondary">
+          答案已提交
+        </div>
+      )}
+
+      {/* 解析悬浮窗 */}
+      {showExplanation && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowExplanation(false)}>
+          <div className="absolute inset-0 bg-slate-950/55" />
+          <div
+            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl max-h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+              <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
+                <Icon name="lightbulb" size={18} className="text-accent" />
+                解析
+              </h3>
+              <button onClick={() => setShowExplanation(false)} className="p-1 active:bg-bg-secondary rounded-lg">
+                <Icon name="x" size={20} className="text-text-muted" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className="text-sm text-text-primary leading-relaxed prose prose-sm max-w-none">
+                <ReactMarkdown>{question.explanation || ''}</ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI 解析悬浮窗 */}
+      {(aiExplanation || aiLoading || aiError) && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => { setAiExplanation(''); setAiError(''); }}>
+          <div className="absolute inset-0 bg-slate-950/55" />
+          <div
+            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl max-h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+              <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
+                <Icon name="lightbulb" size={18} className="text-accent" />
+                AI 解析
+              </h3>
+              <button onClick={() => { setAiExplanation(''); setAiError(''); }} className="p-1 active:bg-bg-secondary rounded-lg">
+                <Icon name="x" size={20} className="text-text-muted" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              {aiLoading ? (
+                <div className="flex items-center justify-center gap-2 py-8 text-text-muted">
+                  <span className="inline-block w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">正在生成解析...</span>
+                </div>
+              ) : aiError ? (
+                <div className="text-sm text-red-500 py-4 text-center">{aiError}</div>
+              ) : (
+                <div className="text-sm text-text-primary leading-relaxed prose prose-sm max-w-none">
+                  <ReactMarkdown>{aiExplanation}</ReactMarkdown>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

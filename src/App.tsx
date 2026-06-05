@@ -13,7 +13,7 @@ function AppLayout() {
   const hideNav = location.pathname.startsWith('/practice/') || location.pathname.startsWith('/wrong/');
 
   return (
-    <div className="min-h-screen bg-gray-50 max-w-lg mx-auto relative">
+    <div className="min-h-dvh bg-bg-primary max-w-3xl mx-auto relative border-x border-border-subtle/50 shadow-[0_24px_80px_-60px_var(--copper-glow)]">
       <main className={hideNav ? '' : 'pb-20'}>
         <Routes>
           <Route path="/" element={<HomePage />} />

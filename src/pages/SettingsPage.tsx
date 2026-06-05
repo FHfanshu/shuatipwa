@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { db } from '../db';
 import { exportAllData, downloadJSON } from '../utils/export';
 import { importFullBackup } from '../utils/import';
 import Icon from '../components/Icon';
+import { useTheme } from '../contexts/ThemeContext';
+import type { Theme, ColorPalette } from '../contexts/ThemeContext';
+import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/ThemeContext';
 
 const AI_PROMPT = `请将以下题目内容转换为 JSON 格式，严格遵循以下结构：
 
@@ -33,53 +36,122 @@ const AI_PROMPT = `请将以下题目内容转换为 JSON 格式，严格遵循�
 以下是题目内容：
 `;
 
+function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    if (open && ref.current) {
+      setHeight(ref.current.scrollHeight);
+    }
+  }, [open]);
+
+  return (
+    <div
+      className="overflow-hidden transition-all duration-300 ease-in-out"
+      style={{ maxHeight: open ? height : 0, opacity: open ? 1 : 0 }}
+    >
+      <div ref={ref}>{children}</div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="px-4 pb-1.5 pt-4">
+        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{title}</span>
+      </div>
+      <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden divide-y divide-border-subtle">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  icon, iconBg, iconColor, label, sub, right, onClick, danger,
+}: {
+  icon: string; iconBg: string; iconColor: string;
+  label: string; sub?: string; right?: ReactNode;
+  onClick?: () => void; danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-bg-secondary active:scale-[0.99] transition-all"
+    >
+      <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
+        <Icon name={icon} size={16} className={iconColor} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className={`text-sm font-medium ${danger ? 'text-red-500' : 'text-text-primary'}`}>{label}</div>
+        {sub && <div className="text-xs text-text-muted mt-0.5 truncate">{sub}</div>}
+      </div>
+      {right ?? <Icon name="chevron-right" size={16} className="text-text-muted shrink-0" />}
+    </button>
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback
       const ta = document.createElement('textarea');
       ta.value = text;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <button
       onClick={handleCopy}
-      className={`w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+      className={`w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
         copied
-          ? 'bg-green-500 text-white'
-          : 'bg-blue-600 text-white active:bg-blue-700'
+          ? 'bg-emerald-500 text-white'
+          : 'bg-accent text-white active:bg-accent-hover'
       }`}
     >
-      <Icon name={copied ? 'check' : 'file-text'} size={16} />
+      <Icon name={copied ? 'check' : 'copy'} size={14} />
       {copied ? '已复制到剪贴板' : '复制提示词'}
     </button>
   );
 }
 
 export default function SettingsPage() {
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [aiExpanded, setAiExpanded] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
+
+  const { theme, actualTheme, palette, setTheme, setPalette } = useTheme();
+
+  const [aiEndpoint, setAiEndpoint] = useState(() => localStorage.getItem('ai_endpoint') || 'https://api.deepseek.com');
+  const [aiKey, setAiKey] = useState(() => localStorage.getItem('ai_apiKey') || '');
+  const [aiModel, setAiModel] = useState(() => localStorage.getItem('ai_model') || 'deepseek-chat');
+
+  const aiConfigured = Boolean(aiEndpoint && aiKey && aiModel);
+
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 2500);
+  };
 
   const handleExport = async () => {
     try {
       const json = await exportAllData();
       const date = new Date().toISOString().slice(0, 10);
-      downloadJSON(json, `刷题宝备份_${date}.json`);
-      setMessage({ type: 'success', text: '备份已下载！' });
+      downloadJSON(json, `刷题助手备份_${date}.json`);
+      showToast('success', '备份已下载');
     } catch (e: any) {
-      setMessage({ type: 'error', text: '导出失败: ' + e.message });
+      showToast('error', '导出失败: ' + e.message);
     }
   };
 
@@ -93,12 +165,20 @@ export default function SettingsPage() {
       if (!confirm('恢复备份将覆盖当前所有数据，确定继续？')) return;
       try {
         await importFullBackup(file);
-        setMessage({ type: 'success', text: '数据恢复成功！' });
+        showToast('success', '数据恢复成功');
       } catch (err: any) {
-        setMessage({ type: 'error', text: '恢复失败: ' + err.message });
+        showToast('error', '恢复失败: ' + err.message);
       }
     };
     input.click();
+  };
+
+  const saveAIConfig = () => {
+    localStorage.setItem('ai_endpoint', aiEndpoint.trim());
+    localStorage.setItem('ai_apiKey', aiKey.trim());
+    localStorage.setItem('ai_model', aiModel.trim());
+    showToast('success', 'AI 设置已保存');
+    setAiExpanded(false);
   };
 
   const handleClearAll = async () => {
@@ -111,113 +191,234 @@ export default function SettingsPage() {
         await db.records.clear();
         await db.favorites.clear();
       });
-      setMessage({ type: 'success', text: '所有数据已清空' });
+      showToast('success', '所有数据已清空');
     } catch (e: any) {
-      setMessage({ type: 'error', text: '清空失败: ' + e.message });
+      showToast('error', '清空失败: ' + e.message);
     }
   };
 
   return (
-    <div className="px-4 pt-4 pb-24">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">设置</h1>
+    <div className="min-h-dvh bg-bg-primary pb-24">
+      {/* Header */}
+      <div className="px-5 pt-6 pb-1">
+        <h1 className="font-display text-[2rem] font-semibold text-text-primary tracking-tight">设置</h1>
+      </div>
 
-      {message && (
-        <div className={`mb-4 p-4 rounded-xl flex items-center justify-between ${message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
-          <span className="flex items-center gap-2">
-            <Icon name={message.type === 'success' ? 'check-circle' : 'x-circle'} size={18} />
-            {message.text}
-          </span>
-          <button onClick={() => setMessage(null)} className="text-sm opacity-60">
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-      )}
+      <div className="px-5 pb-6 space-y-3">
+        {/* Toast */}
+        {toast && (
+          <div
+            className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full shadow-lg text-sm font-medium flex items-center gap-2 animate-fade-in ${
+              toast.type === 'success'
+                ? 'bg-accent text-white'
+                : 'bg-red-500 text-white'
+            }`}
+          >
+            <Icon name={toast.type === 'success' ? 'check' : 'x'} size={14} />
+            {toast.text}
+          </div>
+        )}
 
-      {/* 数据管理 */}
-      <div className="mb-6">
-        <h2 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">数据管理</h2>
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <button
+        {/* AI 设置 */}
+        <Section title="AI">
+          <div>
+            <Row
+              icon="zap"
+              iconBg={aiConfigured ? 'bg-accent/10' : 'bg-bg-secondary'}
+              iconColor={aiConfigured ? 'text-accent' : 'text-text-muted'}
+              label="AI 解析"
+              sub={aiConfigured ? `${aiModel} · 已启用` : '答错时自动生成解析'}
+              right={
+                <div className="flex items-center gap-2 shrink-0">
+                  {aiConfigured && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                  <Icon name="chevron-right" size={16} className={`text-text-muted transition-transform duration-200 ${aiExpanded ? 'rotate-90' : ''}`} />
+                </div>
+              }
+              onClick={() => setAiExpanded(v => !v)}
+            />
+            <Collapse open={aiExpanded}>
+              <div className="px-4 pb-4 pt-1 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-text-secondary block mb-1">API 地址</label>
+                  <input
+                    type="text"
+                    value={aiEndpoint}
+                    onChange={e => setAiEndpoint(e.target.value)}
+                    placeholder="https://api.openai.com/v1"
+                    className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-text-secondary block mb-1">API Key</label>
+                  <input
+                    type="password"
+                    value={aiKey}
+                    onChange={e => setAiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-text-secondary block mb-1">模型名称</label>
+                  <input
+                    type="text"
+                    value={aiModel}
+                    onChange={e => setAiModel(e.target.value)}
+                    placeholder="gpt-4o-mini"
+                    className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <button
+                  onClick={saveAIConfig}
+                  className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-semibold active:bg-accent-hover active:scale-[0.98] transition-all"
+                >
+                  保存
+                </button>
+                <p className="text-xs text-text-muted text-center">支持 OpenAI 兼容协议接口</p>
+              </div>
+            </Collapse>
+          </div>
+        </Section>
+
+        {/* 外观 */}
+        <Section title="外观">
+          <Row
+            icon={actualTheme === 'dark' ? 'moon' : 'sun'}
+            iconBg="bg-accent/10"
+            iconColor="text-accent"
+            label="主题模式"
+            sub={theme === 'system' ? '跟随系统设置' : actualTheme === 'dark' ? '深色模式' : '浅色模式'}
+            right={
+              <div className="flex gap-1">
+                {(['light', 'dark', 'system'] as Theme[]).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      theme === t
+                        ? 'bg-accent text-white'
+                        : 'bg-bg-secondary text-text-muted hover:opacity-80'
+                    }`}
+                  >
+                    {t === 'light' ? '浅' : t === 'dark' ? '深' : '自动'}
+                  </button>
+                ))}
+              </div>
+            }
+          />
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                <Icon name="star" size={16} className="text-accent" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-text-primary">配色方案</div>
+                <div className="text-xs text-text-muted mt-0.5">选择你喜欢的主题色</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.keys(PALETTE_LABELS) as ColorPalette[]).map(p => {
+                const preview = PALETTE_PREVIEW[p];
+                const isActive = palette === p;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPalette(p)}
+                    className={`relative flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all active:scale-[0.97] ${
+                      isActive
+                        ? 'border-accent bg-accent/5 shadow-sm'
+                        : 'border-border-subtle bg-bg-card hover:border-border-default'
+                    }`}
+                  >
+                    <div className="flex gap-1">
+                      <div className="w-4 h-4 rounded-full border border-black/10" style={{ backgroundColor: actualTheme === 'dark' ? preview.darkAccent : preview.accent }} />
+                      <div className="w-4 h-4 rounded-full border border-black/10" style={{ backgroundColor: actualTheme === 'dark' ? preview.dark : preview.light }} />
+                    </div>
+                    <span className={`text-xs font-medium ${isActive ? 'text-accent' : 'text-text-secondary'}`}>
+                      {PALETTE_LABELS[p]}
+                    </span>
+                    {isActive && (
+                      <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-accent flex items-center justify-center">
+                        <Icon name="check" size={10} className="text-white" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Section>
+
+        {/* 数据 */}
+        <Section title="数据">
+          <Row
+            icon="download"
+            iconBg="bg-accent/10"
+            iconColor="text-accent"
+            label="导出备份"
+            sub="下载全部数据为 JSON"
             onClick={handleExport}
-            className="w-full flex items-center gap-4 px-4 py-4 border-b border-gray-50 active:bg-gray-50"
-          >
-            <Icon name="upload" size={22} className="text-blue-500" />
-            <div className="text-left flex-1">
-              <div className="font-medium text-gray-900">导出备份</div>
-              <div className="text-xs text-gray-500">下载全部数据为 JSON 文件</div>
-            </div>
-            <Icon name="chevron-right" size={18} className="text-gray-300" />
-          </button>
-
-          <button
+          />
+          <Row
+            icon="upload"
+            iconBg="bg-accent/10"
+            iconColor="text-accent"
+            label="恢复备份"
+            sub="从 JSON 文件导入"
             onClick={handleRestore}
-            className="w-full flex items-center gap-4 px-4 py-4 border-b border-gray-50 active:bg-gray-50"
-          >
-            <Icon name="download" size={22} className="text-green-500" />
-            <div className="text-left flex-1">
-              <div className="font-medium text-gray-900">恢复备份</div>
-              <div className="text-xs text-gray-500">从 JSON 文件恢复数据</div>
-            </div>
-            <Icon name="chevron-right" size={18} className="text-gray-300" />
-          </button>
-
-          <button
+          />
+          <Row
+            icon="trash"
+            iconBg="bg-red-500/10"
+            iconColor="text-red-500"
+            label="清空所有数据"
+            sub="删除所有题库和记录"
             onClick={handleClearAll}
-            className="w-full flex items-center gap-4 px-4 py-4 active:bg-gray-50"
-          >
-            <Icon name="trash" size={22} className="text-red-500" />
-            <div className="text-left flex-1">
-              <div className="font-medium text-red-600">清空所有数据</div>
-              <div className="text-xs text-gray-500">删除所有题库和记录</div>
-            </div>
-            <Icon name="chevron-right" size={18} className="text-gray-300" />
-          </button>
-        </div>
-      </div>
+            danger
+          />
+        </Section>
 
-      {/* 关于 */}
-      <div className="mb-6">
-        <h2 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">关于</h2>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <div className="text-center">
-            <Icon name="book" size={40} className="text-blue-500 mb-2" />
-            <div className="font-bold text-gray-900">刷题宝</div>
-            <div className="text-xs text-gray-500 mt-1">v1.0.0</div>
-            <div className="text-xs text-gray-400 mt-3 leading-relaxed">
-              本地离线刷题 PWA<br />
-              数据存储在你的设备上，不会上传到任何服务器<br />
-              支持 JSON / CSV / Excel / 文本导入
-            </div>
+        {/* 转换提示词 */}
+        <Section title="工具">
+          <div>
+            <Row
+              icon="file-text"
+              iconBg="bg-accent/10"
+              iconColor="text-accent"
+              label="AI 转换提示词"
+              sub="将 Word/PDF 转为可导入的 JSON"
+              right={
+                <Icon name="chevron-right" size={16} className={`text-text-muted transition-transform duration-200 shrink-0 ${promptExpanded ? 'rotate-90' : ''}`} />
+              }
+              onClick={() => setPromptExpanded(v => !v)}
+            />
+            <Collapse open={promptExpanded}>
+              <div className="px-4 pb-4 pt-1 space-y-3">
+                <p className="text-xs text-text-secondary">把题库内容粘贴给 AI，配合此提示词一键转换格式。</p>
+                <div className="bg-bg-secondary rounded-lg p-3 max-h-32 overflow-y-auto border border-border-subtle">
+                  <pre className="text-xs text-text-secondary whitespace-pre-wrap leading-relaxed font-mono">{AI_PROMPT}</pre>
+                </div>
+                <CopyButton text={AI_PROMPT} />
+              </div>
+            </Collapse>
+          </div>
+        </Section>
+
+        {/* 提示 */}
+        <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden divide-y divide-border-subtle">
+          <div className="flex items-start gap-3 px-4 py-3">
+            <Icon name="smartphone" size={14} className="text-text-muted mt-0.5 shrink-0" />
+            <span className="text-xs text-text-secondary">添加到主屏幕后可像 App 一样使用，支持离线访问</span>
+          </div>
+          <div className="flex items-start gap-3 px-4 py-3">
+            <Icon name="refresh-cw" size={14} className="text-text-muted mt-0.5 shrink-0" />
+            <span className="text-xs text-text-secondary">建议定期导出备份，防止数据丢失</span>
           </div>
         </div>
-      </div>
 
-      {/* 使用提示 */}
-      <div>
-        <h2 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">使用提示</h2>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 space-y-3">
-          <p className="flex items-start gap-2">
-            <Icon name="smartphone" size={16} className="mt-0.5 shrink-0 text-amber-600" />
-            <span>添加到主屏幕后可像 App 一样使用，支持离线访问。</span>
-          </p>
-          <p className="flex items-start gap-2">
-            <Icon name="refresh" size={16} className="mt-0.5 shrink-0 text-amber-600" />
-            <span>建议定期导出备份，防止数据丢失。</span>
-          </p>
-        </div>
-      </div>
-
-      {/* AI 转换提示词 */}
-      <div className="mt-6">
-        <h2 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">AI 转换提示词</h2>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-sm text-gray-600 mb-3">
-            老师发的 Word / PDF 题库，把内容粘贴给 ChatGPT 或 Claude，配合以下提示词即可一键转为可导入的 JSON 格式。
-          </p>
-          <div className="bg-gray-50 rounded-xl p-3 mb-3">
-            <pre className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{AI_PROMPT}</pre>
-          </div>
-          <CopyButton text={AI_PROMPT} />
+        {/* 版本 */}
+        <div className="text-center pt-4 pb-2">
+          <span className="text-xs text-text-muted">v1.0.0</span>
         </div>
       </div>
     </div>

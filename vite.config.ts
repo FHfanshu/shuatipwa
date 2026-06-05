@@ -12,8 +12,8 @@ export default defineConfig(({ mode }) => ({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: '刷题宝 - 本地离线刷题',
-        short_name: '刷题宝',
+        name: '刷题助手 - 本地离线刷题',
+        short_name: '刷题助手',
         description: '本地离线刷题 PWA，数据不离开你的设备',
         start_url: '/shuatipwa/',
         scope: '/shuatipwa/',

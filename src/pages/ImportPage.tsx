@@ -41,19 +41,19 @@ export default function ImportPage() {
   };
 
   return (
-    <div className="px-4 pt-4 pb-24">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">导入题库</h1>
-      <p className="text-sm text-gray-500 mb-6">支持 JSON、CSV、Excel、Word、TXT / Markdown</p>
+    <div className="px-5 pt-6 pb-24">
+      <h1 className="text-[2rem] font-semibold tracking-tight text-text-primary mb-2">导入题库</h1>
+      <p className="text-sm text-text-secondary mb-6">支持 JSON、CSV、Excel、Word、TXT / Markdown</p>
 
       {/* 自定义名称 */}
       <div className="mb-4">
-        <label className="text-sm text-gray-600 mb-1 block">题库名称（可选，留空则用文件名）</label>
+        <label className="text-sm text-text-secondary mb-1 block">题库名称（可选，留空则用文件名）</label>
         <input
           type="text"
           value={bankName}
           onChange={e => setBankName(e.target.value)}
           placeholder="例如：操作系统期末复习"
-          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
+          className="w-full px-4 py-3 border border-border-default rounded-xl text-sm focus:border-accent focus:ring-4 focus:ring-accent/10 focus:outline-none bg-bg-card text-text-primary placeholder:text-text-muted transition-all"
         />
       </div>
 
@@ -63,20 +63,20 @@ export default function ImportPage() {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         onClick={() => fileRef.current?.click()}
-        className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
-          dragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-400'
+        className={`border border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
+          dragging ? 'border-accent bg-accent/10 shadow-[inset_0_0_0_1px_var(--accent)]' : 'border-border-default bg-bg-card hover:border-accent/50 hover:bg-bg-secondary'
         }`}
       >
         {loading ? (
           <div>
-            <Icon name="refresh" size={40} className="text-blue-500 mb-3 animate-spin" />
-            <div className="text-gray-600">正在导入...</div>
+            <Icon name="refresh" size={40} className="text-accent mb-3 animate-spin" />
+            <div className="text-text-secondary">正在导入...</div>
           </div>
         ) : (
           <div>
-            <Icon name="folder" size={48} className="text-gray-400 mb-3" />
-            <div className="font-medium text-gray-700 mb-1">点击或拖拽文件到这里</div>
-            <div className="text-xs text-gray-400">JSON / CSV / Excel / Word / TXT / Markdown</div>
+            <Icon name="folder" size={48} className="text-text-muted mb-3" />
+            <div className="font-medium text-text-secondary mb-1">点击或拖拽文件到这里</div>
+            <div className="text-xs text-text-muted">JSON / CSV / Excel / Word / TXT / Markdown</div>
           </div>
         )}
       </div>
@@ -91,24 +91,24 @@ export default function ImportPage() {
 
       {/* 结果 */}
       {result && (
-        <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
+        <div className="mt-4 bg-emerald-500/10 border border-emerald-500/25 rounded-xl p-4">
           <div className="flex items-center gap-2">
-            <Icon name="check-circle" size={22} className="text-green-600" />
+            <Icon name="check-circle" size={22} className="text-emerald-500" />
             <div>
-              <div className="font-medium text-green-800">导入成功！</div>
-              <div className="text-sm text-green-600">「{result.name}」共 {result.count} 题</div>
+              <div className="font-medium text-text-primary">导入成功</div>
+              <div className="text-sm text-text-secondary">「{result.name}」共 {result.count} 题</div>
             </div>
           </div>
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => navigate('/')}
-              className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-medium active:bg-green-700"
+              className="flex-1 py-2 bg-accent text-white rounded-lg text-sm font-medium active:bg-accent-hover active:scale-[0.98] transition-all"
             >
               去刷题
             </button>
             <button
               onClick={() => { setResult(null); }}
-              className="flex-1 py-2 bg-white border border-green-300 text-green-700 rounded-lg text-sm font-medium"
+              className="flex-1 py-2 bg-bg-card border border-border-default text-text-secondary rounded-lg text-sm font-medium active:scale-[0.98] transition-all"
             >
               继续导入
             </button>
@@ -118,23 +118,23 @@ export default function ImportPage() {
 
       {/* 错误 */}
       {error && (
-        <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
+        <div className="mt-4 bg-red-500/10 border border-red-500/25 rounded-xl p-4">
           <div className="flex items-start gap-2">
-            <Icon name="x-circle" size={22} className="text-red-600" />
+            <Icon name="x-circle" size={22} className="text-red-500" />
             <div>
-              <div className="font-medium text-red-800">导入失败</div>
-              <div className="text-sm text-red-600 mt-1">{error}</div>
+              <div className="font-medium text-text-primary">导入失败</div>
+              <div className="text-sm text-red-500 mt-1">{error}</div>
             </div>
           </div>
         </div>
       )}
 
       {/* 格式说明 */}
-      <div className="mt-6 bg-gray-50 rounded-xl p-4">
-        <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-1">
+      <div className="mt-6 bg-bg-secondary rounded-xl p-4">
+        <h3 className="font-medium text-text-secondary mb-3 flex items-center gap-1">
           <Icon name="file-text" size={16} /> JSON 格式示例
         </h3>
-        <pre className="text-xs bg-gray-800 text-green-400 p-3 rounded-lg overflow-x-auto">{`[
+        <pre className="text-xs bg-bg-card text-text-secondary border border-border-subtle p-3 rounded-lg overflow-x-auto">{`[
   {
     "type": "single",
     "question": "下列哪项属于操作系统？",

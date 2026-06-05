@@ -75,6 +75,10 @@ export default function PracticePage() {
     setResults(prev => ({ ...prev, [index]: status }));
   }, []);
 
+  const handleAutoAdvance = useCallback(() => {
+    setCurrentIndex(prev => Math.min(prev + 1, questions.length - 1));
+  }, [questions.length]);
+
   const goNext = () => {
     if (currentIndex < questions.length - 1) setCurrentIndex(prev => prev + 1);
   };
@@ -95,31 +99,31 @@ export default function PracticePage() {
     const maxCount = questions.length;
     return (
       <div className="px-4 pt-4 pb-8">
-        <button onClick={() => navigate(-1)} className="text-blue-600 text-sm mb-4 flex items-center gap-1">
+        <button onClick={() => navigate(-1)} className="text-accent text-sm mb-4 flex items-center gap-1">
           <Icon name="arrow-left" size={16} /> 返回
         </button>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-          <Icon name="exam" size={28} className="text-blue-600" /> 模拟考试
+        <h1 className="text-2xl font-bold text-text-primary mb-2 flex items-center gap-2">
+          <Icon name="exam" size={28} className="text-accent" /> 模拟考试
         </h1>
-        <p className="text-sm text-gray-500 mb-6">题库共 {maxCount} 题，选择考试题数</p>
+        <p className="text-sm text-text-secondary mb-6">题库共 {maxCount} 题，选择考试题数</p>
 
         <div className="space-y-3">
           {[20, 50, 100].filter(n => n <= maxCount).concat(maxCount <= 100 ? [] : [maxCount]).map(n => (
             <button
               key={n}
               onClick={() => { setExamCount(n); setExamStarted(true); }}
-              className="w-full py-4 bg-white border-2 border-gray-200 rounded-xl text-left px-5 hover:border-blue-400 active:bg-blue-50 transition-colors"
+              className="w-full py-4 bg-bg-card border-2 border-border-default rounded-xl text-left px-5 hover:border-accent active:bg-accent/10 transition-colors"
             >
-              <div className="font-medium text-gray-900">{n} 题</div>
-              <div className="text-xs text-gray-500 mt-0.5">
+              <div className="font-medium text-text-primary">{n} 题</div>
+              <div className="text-xs text-text-secondary mt-0.5">
                 {n === maxCount ? '全部题目' : `随机抽取 ${n} 题`}
               </div>
             </button>
           ))}
         </div>
 
-        <div className="mt-8 bg-orange-50 border border-orange-200 rounded-xl p-4">
-          <div className="text-sm text-orange-800 flex items-start gap-2">
+        <div className="mt-8 bg-accent/10 border border-accent/25 rounded-xl p-4">
+          <div className="text-sm text-text-secondary flex items-start gap-2">
             <Icon name="info" size={16} className="mt-0.5 shrink-0" />
             <span>考试模式下，答完所有题后才会显示成绩。答错的题会自动加入错题本。</span>
           </div>
@@ -131,7 +135,7 @@ export default function PracticePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">加载中...</div>
+        <div className="text-text-muted">加载中...</div>
       </div>
     );
   }
@@ -139,19 +143,19 @@ export default function PracticePage() {
   if (questions.length === 0) {
     return (
       <div className="px-4 pt-4">
-        <button onClick={() => navigate(-1)} className="text-blue-600 text-sm mb-4 flex items-center gap-1">
+        <button onClick={() => navigate(-1)} className="text-accent text-sm mb-4 flex items-center gap-1">
           <Icon name="arrow-left" size={16} /> 返回
         </button>
         <div className="flex flex-col items-center justify-center h-[60vh]">
           <Icon
             name={mode === 'wrong' ? 'check-circle' : mode === 'favorite' ? 'star-empty' : 'file-text'}
             size={56}
-            className={mode === 'wrong' ? 'text-green-500 mb-4' : 'text-gray-400 mb-4'}
+            className={mode === 'wrong' ? 'text-emerald-500 mb-4' : 'text-text-muted mb-4'}
           />
-          <div className="text-lg font-medium text-gray-700">
+          <div className="text-lg font-medium text-text-secondary">
             {mode === 'wrong' ? '没有错题，太棒了！' : mode === 'favorite' ? '还没有收藏题目' : '题库为空'}
           </div>
-          <p className="text-sm text-gray-500 mt-2">
+          <p className="text-sm text-text-secondary mt-2">
             {mode === 'wrong' ? '继续保持！' : '先去练习一些题目吧'}
           </p>
         </div>
@@ -169,22 +173,22 @@ export default function PracticePage() {
           <Icon
             name="trophy"
             size={64}
-            className={accuracy >= 90 ? 'text-yellow-500 mb-4' : accuracy >= 60 ? 'text-blue-500 mb-4' : 'text-gray-400 mb-4'}
+            className={accuracy >= 90 ? 'text-accent mb-4' : accuracy >= 60 ? 'text-accent mb-4' : 'text-text-muted mb-4'}
           />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">考试结束！</h2>
-          <div className="text-5xl font-bold text-blue-600 my-4">{accuracy}分</div>
+          <h2 className="text-2xl font-bold text-text-primary mb-2">考试结束！</h2>
+          <div className="text-5xl font-bold text-accent my-4">{accuracy}分</div>
 
           <div className="grid grid-cols-3 gap-4 w-full max-w-xs mt-4">
-            <div className="text-center bg-gray-50 rounded-xl p-3">
-              <div className="text-xl font-bold text-gray-800">{questions.length}</div>
-              <div className="text-xs text-gray-500">总题数</div>
+            <div className="text-center bg-bg-secondary rounded-xl p-3">
+              <div className="text-xl font-bold text-text-primary">{questions.length}</div>
+              <div className="text-xs text-text-secondary">总题数</div>
             </div>
-            <div className="text-center bg-green-50 rounded-xl p-3">
-              <div className="text-xl font-bold text-green-600">{correct}</div>
-              <div className="text-xs text-green-500">正确</div>
+            <div className="text-center bg-emerald-500/10 rounded-xl p-3">
+              <div className="text-xl font-bold text-emerald-500">{correct}</div>
+              <div className="text-xs text-emerald-500">正确</div>
             </div>
-            <div className="text-center bg-red-50 rounded-xl p-3">
-              <div className="text-xl font-bold text-red-600">{wrong}</div>
+            <div className="text-center bg-red-500/10 rounded-xl p-3">
+              <div className="text-xl font-bold text-red-500">{wrong}</div>
               <div className="text-xs text-red-500">错误</div>
             </div>
           </div>
@@ -192,13 +196,13 @@ export default function PracticePage() {
           <div className="flex gap-3 mt-8 w-full max-w-xs">
             <button
               onClick={() => navigate(`/wrong/${bankId}`)}
-              className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-medium active:bg-orange-600"
+              className="flex-1 py-3 bg-accent text-white rounded-xl font-medium active:bg-accent-hover active:scale-[0.98] transition-all"
             >
               查看错题
             </button>
             <button
               onClick={() => navigate('/')}
-              className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium active:bg-gray-200"
+              className="flex-1 py-3 bg-bg-secondary text-text-secondary rounded-xl font-medium active:opacity-80"
             >
               返回首页
             </button>
@@ -211,24 +215,24 @@ export default function PracticePage() {
   const currentQuestion = questions[currentIndex];
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-dvh bg-bg-primary">
       {/* 顶部栏 */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
-        <button onClick={() => navigate(-1)} className="text-blue-600 text-sm flex items-center gap-1">
+      <div className="bg-bg-card border-b border-border-subtle px-4 py-3 flex items-center justify-between shrink-0">
+        <button onClick={() => navigate(-1)} className="text-accent text-sm flex items-center gap-1">
           <Icon name="arrow-left" size={16} /> 返回
         </button>
-        <div className="text-sm font-medium text-gray-700 flex items-center gap-1">
+        <div className="text-sm font-medium text-text-secondary flex items-center gap-1">
           <Icon name={modeIcon} size={16} /> {modeLabel}
         </div>
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-text-secondary">
           {answered}/{questions.length}
         </div>
       </div>
 
       {/* 进度条 */}
-      <div className="h-1 bg-gray-200 shrink-0">
+      <div className="h-1 bg-border-default shrink-0">
         <div
-          className="h-full bg-blue-500 transition-all duration-300"
+          className="h-full bg-accent transition-all duration-300"
           style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
         />
       </div>
@@ -241,28 +245,29 @@ export default function PracticePage() {
           index={currentIndex}
           total={questions.length}
           onAnswer={status => handleAnswer(currentIndex, status)}
+          onAutoAdvance={handleAutoAdvance}
           showAnswerImmediately={mode !== 'exam'}
         />
       </div>
 
       {/* 底部导航 */}
-      <div className="bg-white border-t border-gray-200 px-4 pt-3 pb-5 flex items-center gap-3 shrink-0 safe-area-bottom">
+      <div className="bg-bg-card border-t border-border-subtle px-4 pt-3 pb-5 flex items-center gap-3 shrink-0 safe-area-bottom">
         <button
           onClick={goPrev}
           disabled={currentIndex === 0}
-          className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium disabled:opacity-30 active:bg-gray-200 flex items-center gap-1"
+          className="px-4 py-2.5 bg-bg-secondary text-text-secondary rounded-xl text-sm font-medium disabled:opacity-30 active:opacity-80 flex items-center gap-1"
         >
           <Icon name="arrow-left" size={14} /> 上一题
         </button>
 
         {/* 进度指示器 */}
         <div className="flex-1 flex flex-col items-center justify-center px-2">
-          <div className="text-sm font-medium text-gray-700 mb-1">
+          <div className="text-sm font-medium text-text-secondary mb-1">
             {currentIndex + 1} / {questions.length}
           </div>
-          <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+          <div className="w-full h-1 bg-border-default rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 rounded-full transition-all"
+              className="h-full bg-accent rounded-full transition-all"
               style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
             />
           </div>
@@ -271,7 +276,7 @@ export default function PracticePage() {
         <button
           onClick={goNext}
           disabled={currentIndex >= questions.length - 1}
-          className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-30 active:bg-blue-700 flex items-center gap-1"
+          className="px-4 py-2.5 bg-accent text-white rounded-xl text-sm font-medium disabled:opacity-30 active:bg-accent-hover flex items-center gap-1"
         >
           下一题 <Icon name="arrow-right" size={14} />
         </button>
@@ -280,7 +285,7 @@ export default function PracticePage() {
       {/* 悬浮总览按钮 */}
       <button
         onClick={() => setShowOverview(true)}
-        className="fixed right-4 bottom-24 z-40 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg active:bg-blue-700 flex items-center justify-center transition-transform active:scale-95"
+        className="fixed right-4 bottom-24 z-40 w-12 h-12 bg-accent text-white rounded-full shadow-[0_18px_36px_-18px_rgba(31,111,235,0.9)] active:bg-accent-hover flex items-center justify-center transition-transform active:scale-95"
       >
         <Icon name="list" size={22} />
       </button>
