@@ -49,6 +49,7 @@ function normalizeQuestion(raw: RawQuestion, bankId: string): Question {
 
   return {
     id: raw.id || uuidv4(),
+    bankId,
     type,
     question: raw.question,
     options,
