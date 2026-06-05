@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/shuatipwa/' : '/',
   plugins: [
     react(),
     tailwindcss(),
@@ -14,6 +15,8 @@ export default defineConfig({
         name: '刷题宝 - 本地离线刷题',
         short_name: '刷题宝',
         description: '本地离线刷题 PWA，数据不离开你的设备',
+        start_url: '/shuatipwa/',
+        scope: '/shuatipwa/',
         theme_color: '#2563eb',
         background_color: '#f9fafb',
         display: 'standalone',
@@ -31,4 +34,4 @@ export default defineConfig({
       },
     }),
   ],
-})
+}))
