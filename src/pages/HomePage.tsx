@@ -115,7 +115,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="px-5 pb-24 pt-5">
+    <div className="px-5 pt-5">
       <Toast toast={toast} />
       <HomeHeader />
 

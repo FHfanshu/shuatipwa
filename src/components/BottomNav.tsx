@@ -12,7 +12,7 @@ export default function BottomNav() {
   const navigate = useNavigate();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-surface-glass/95 backdrop-blur-2xl border-t border-border-subtle safe-area-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 bg-surface-glass/95 backdrop-blur-2xl border-t border-border-subtle">
       <div className="max-w-3xl mx-auto grid grid-cols-3">
         {navItems.map(item => {
           const isActive = location.pathname === item.path;
