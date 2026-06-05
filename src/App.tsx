@@ -6,9 +6,11 @@ import PracticePage from './pages/PracticePage';
 import WrongPage from './pages/WrongPage';
 import SettingsPage from './pages/SettingsPage';
 
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <div className="min-h-screen bg-gray-50 max-w-lg mx-auto relative">
         <main className="pb-20">
           <Routes>
