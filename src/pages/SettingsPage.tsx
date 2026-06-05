@@ -4,6 +4,71 @@ import { exportAllData, downloadJSON } from '../utils/export';
 import { importFullBackup } from '../utils/import';
 import Icon from '../components/Icon';
 
+const AI_PROMPT = `请将以下题目内容转换为 JSON 格式，严格遵循以下结构：
+
+{
+  "name": "题库名称",
+  "questions": [
+    {
+      "type": "single",
+      "question": "题目内容",
+      "options": {"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"},
+      "answer": ["B"],
+      "explanation": "解析（如有）"
+    }
+  ]
+}
+
+规则：
+1. type 取值：single（单选）/ multiple（多选）/ judge（判断）/ blank（填空）/ short（简答）
+2. 单选题 answer 为一个字母的数组，如 ["B"]
+3. 多选题 answer 为多个字母的数组，如 ["A", "C"]
+4. 判断题没有 options，answer 为 ["true"] 或 ["false"]
+5. 填空题没有 options，answer 为答案文本数组
+6. 简答题没有 options，answer 为参考答案数组
+7. options 的 key 必须是大写字母 A/B/C/D/E...
+8. 保持原题内容不变，不要修改题意
+9. 只输出 JSON，不要其他内容
+
+以下是题目内容：
+`;
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+        copied
+          ? 'bg-green-500 text-white'
+          : 'bg-blue-600 text-white active:bg-blue-700'
+      }`}
+    >
+      <Icon name={copied ? 'check' : 'file-text'} size={16} />
+      {copied ? '已复制到剪贴板' : '复制提示词'}
+    </button>
+  );
+}
+
 export default function SettingsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -132,10 +197,6 @@ export default function SettingsPage() {
         <h2 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">使用提示</h2>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 space-y-3">
           <p className="flex items-start gap-2">
-            <Icon name="lightbulb" size={16} className="mt-0.5 shrink-0 text-amber-600" />
-            <span>老师发的 Word / PDF 题库，可以先用 AI (ChatGPT/Claude) 转成 JSON，再导入刷题。</span>
-          </p>
-          <p className="flex items-start gap-2">
             <Icon name="smartphone" size={16} className="mt-0.5 shrink-0 text-amber-600" />
             <span>添加到主屏幕后可像 App 一样使用，支持离线访问。</span>
           </p>
@@ -143,6 +204,20 @@ export default function SettingsPage() {
             <Icon name="refresh" size={16} className="mt-0.5 shrink-0 text-amber-600" />
             <span>建议定期导出备份，防止数据丢失。</span>
           </p>
+        </div>
+      </div>
+
+      {/* AI 转换提示词 */}
+      <div className="mt-6">
+        <h2 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">AI 转换提示词</h2>
+        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+          <p className="text-sm text-gray-600 mb-3">
+            老师发的 Word / PDF 题库，把内容粘贴给 ChatGPT 或 Claude，配合以下提示词即可一键转为可导入的 JSON 格式。
+          </p>
+          <div className="bg-gray-50 rounded-xl p-3 mb-3">
+            <pre className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{AI_PROMPT}</pre>
+          </div>
+          <CopyButton text={AI_PROMPT} />
         </div>
       </div>
     </div>
