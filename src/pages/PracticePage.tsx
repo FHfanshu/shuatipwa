@@ -360,7 +360,7 @@ export default function PracticePage() {
       </div>
 
       {/* 题目卡片 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 min-h-0">
         <QuestionCard
           question={currentQuestion}
           bankId={bankId!}
