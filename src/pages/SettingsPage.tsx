@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { db } from '../db';
-import { exportAllData, downloadJSON } from '../utils/export';
+import { exportAllAsZip, downloadBlob } from '../utils/export';
 import { importFullBackup } from '../utils/import';
 import Icon from '../components/Icon';
 import { useTheme } from '../contexts/ThemeContext';
@@ -146,9 +146,9 @@ export default function SettingsPage() {
 
   const handleExport = async () => {
     try {
-      const json = await exportAllData();
+      const blob = await exportAllAsZip();
       const date = new Date().toISOString().slice(0, 10);
-      downloadJSON(json, `刷题助手备份_${date}.json`);
+      downloadBlob(blob, `刷题助手备份_${date}.zip`);
       showToast('success', '备份已下载');
     } catch (e: any) {
       showToast('error', '导出失败: ' + e.message);
@@ -158,7 +158,7 @@ export default function SettingsPage() {
   const handleRestore = async () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
+    input.accept = '.zip,.json';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
@@ -356,7 +356,7 @@ export default function SettingsPage() {
             iconBg="bg-accent/10"
             iconColor="text-accent"
             label="导出备份"
-            sub="下载全部数据为 JSON"
+            sub="下载全部数据为 ZIP"
             onClick={handleExport}
           />
           <Row
@@ -364,7 +364,7 @@ export default function SettingsPage() {
             iconBg="bg-accent/10"
             iconColor="text-accent"
             label="恢复备份"
-            sub="从 JSON 文件导入"
+            sub="从 ZIP/JSON 文件导入"
             onClick={handleRestore}
           />
           <Row

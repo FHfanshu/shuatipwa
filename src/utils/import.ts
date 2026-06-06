@@ -395,11 +395,23 @@ export async function importFromFile(
   return { bank, count: questions.length };
 }
 
-// ============ 从 JSON 恢复全部数据 ============
+// ============ 从 ZIP/JSON 恢复全部数据 ============
 
 export async function importFullBackup(file: File): Promise<void> {
-  const text = await file.text();
-  const data = JSON.parse(text);
+  let jsonText: string;
+
+  if (file.name.endsWith('.zip')) {
+    const { unzipSync, strFromU8 } = await import('fflate');
+    const buf = await file.arrayBuffer();
+    const files = unzipSync(new Uint8Array(buf));
+    const backup = files['backup.json'];
+    if (!backup) throw new Error('ZIP 中未找到 backup.json');
+    jsonText = strFromU8(backup);
+  } else {
+    jsonText = await file.text();
+  }
+
+  const data = JSON.parse(jsonText);
 
   if (data.version !== 1) {
     throw new Error('备份版本不支持');

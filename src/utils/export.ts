@@ -1,5 +1,6 @@
 import { db } from '../db';
 import type { ExportData } from '../types';
+import { zipSync, strToU8 } from 'fflate';
 
 export async function exportAllData(): Promise<string> {
   const banks = await db.banks.toArray();
@@ -23,17 +24,24 @@ export async function exportAllData(): Promise<string> {
     favorites,
   };
 
-  return JSON.stringify(data, null, 2);
+  return JSON.stringify(data);
 }
 
-export function downloadJSON(json: string, filename: string) {
-  const blob = new Blob([json], { type: 'application/json' });
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export async function exportAllAsZip(): Promise<Blob> {
+  const json = await exportAllData();
+  const compressed = zipSync({
+    'backup.json': strToU8(json),
+  }, { level: 9 });
+  return new Blob([compressed], { type: 'application/zip' });
 }
 
 export async function exportBankQuestions(bankId: string): Promise<string> {
