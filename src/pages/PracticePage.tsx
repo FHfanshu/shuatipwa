@@ -116,6 +116,15 @@ export default function PracticePage() {
         if (Object.keys(restoredResults).length > 0) {
           setResults(restoredResults);
           setQuestionStates(restoredStates);
+
+          // Sequential mode: jump to first unanswered question
+          if (mode === 'sequential') {
+            const firstUnanswered = qs.findIndex((_, i) => !restoredResults[i]);
+            setCurrentIndex(firstUnanswered >= 0 ? firstUnanswered : qs.length - 1);
+            // Clear stale localStorage progress since we now restore from IndexedDB
+            localStorage.removeItem(`practice-progress-${bankId}-${mode}`);
+            setRestored(true);
+          }
         }
       }
 
