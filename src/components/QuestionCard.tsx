@@ -244,7 +244,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
           explanation: fullText,
           createdAt: Date.now(),
         });
-        setAiCacheId(newId);
+        setAiCacheId(newId ?? null);
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
