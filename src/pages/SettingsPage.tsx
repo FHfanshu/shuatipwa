@@ -131,6 +131,7 @@ export default function SettingsPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [aiExpanded, setAiExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ step: string; percent: number } | null>(null);
 
   const { theme, actualTheme, palette, setTheme, setPalette } = useTheme();
 
@@ -148,11 +149,16 @@ export default function SettingsPage() {
 
   const handleExport = async () => {
     try {
-      const blob = await exportAllAsZip();
+      setExportProgress({ step: '准备中...', percent: 0 });
+      const blob = await exportAllAsZip((step, percent) => {
+        setExportProgress({ step, percent });
+      });
       const date = new Date().toISOString().slice(0, 10);
       downloadBlob(blob, `刷题助手备份_${date}.zip`);
+      setExportProgress(null);
       showToast('success', '备份已下载');
     } catch (e: any) {
+      setExportProgress(null);
       showToast('error', '导出失败: ' + e.message);
     }
   };
@@ -219,6 +225,22 @@ export default function SettingsPage() {
           >
             <Icon name={toast.type === 'success' ? 'check' : 'x'} size={14} />
             {toast.text}
+          </div>
+        )}
+
+        {/* Export Progress */}
+        {exportProgress && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40">
+            <div className="bg-bg-card rounded-2xl p-6 w-72 shadow-xl border border-border-subtle space-y-4">
+              <div className="text-sm font-medium text-text-primary text-center">{exportProgress.step}</div>
+              <div className="w-full h-2 bg-bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-accent rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${exportProgress.percent}%` }}
+                />
+              </div>
+              <div className="text-xs text-text-muted text-center">{exportProgress.percent}%</div>
+            </div>
           </div>
         )}
 
