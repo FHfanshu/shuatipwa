@@ -76,6 +76,49 @@ export default function PracticePage() {
       setRestored(false);
       lastSavedRef.current = '';
 
+      // Load previous records from IndexedDB to restore results and question states
+      if (mode !== 'exam') {
+        const allRecords = await db.records.where('bankId').equals(bankId!).toArray();
+        const questionIdToIndex = new Map<string, number>();
+        qs.forEach((q, i) => questionIdToIndex.set(q.id, i));
+
+        // Find latest record per question
+        const latestRecords = new Map<string, typeof allRecords[0]>();
+        for (const r of allRecords) {
+          const existing = latestRecords.get(r.questionId);
+          if (!existing || r.timestamp > existing.timestamp) {
+            latestRecords.set(r.questionId, r);
+          }
+        }
+
+        const restoredResults: Record<number, AnswerStatus> = {};
+        const restoredStates = new Map<number, {
+          userAnswer: string[];
+          blankInput: string;
+          submitted: boolean;
+          status: AnswerStatus;
+          recordId?: number | null;
+        }>();
+
+        for (const [questionId, record] of latestRecords) {
+          const idx = questionIdToIndex.get(questionId);
+          if (idx === undefined) continue;
+          restoredResults[idx] = record.status;
+          restoredStates.set(idx, {
+            userAnswer: record.userAnswer || [],
+            blankInput: '',
+            submitted: true,
+            status: record.status,
+            recordId: record.id,
+          });
+        }
+
+        if (Object.keys(restoredResults).length > 0) {
+          setResults(restoredResults);
+          setQuestionStates(restoredStates);
+        }
+      }
+
       // Check for saved progress in sequential mode
       if (mode === 'sequential') {
         const saved = localStorage.getItem(`practice-progress-${bankId}-${mode}`);
