@@ -455,7 +455,16 @@ export default function SettingsPage() {
               发现新版本 v{latestVersion}，点击更新
             </button>
           ) : (
-            <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
+              <button
+                onClick={() => window.location.reload()}
+                className="p-1 active:bg-bg-secondary rounded-md"
+                title="刷新页面"
+              >
+                <Icon name="refresh-cw" size={12} className="text-text-muted" />
+              </button>
+            </div>
           )}
         </div>
       </div>
