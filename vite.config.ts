@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
           description: '本地离线刷题 PWA，数据不离开你的设备',
           start_url: base,
           scope: base,
-          theme_color: '#2563eb',
+          theme_color: '#faf8f5',
           background_color: '#f9fafb',
           display: 'standalone',
           orientation: 'portrait',
