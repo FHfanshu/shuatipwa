@@ -42,6 +42,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const [showExplanation, setShowExplanation] = useState(false);
   const [recordId, setRecordId] = useState<number | null>(null);
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRestoringRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const recordIdRef = useRef<number | null>(null);
   const submittedAnswerRef = useRef<string[]>([]);
@@ -51,6 +52,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   useEffect(() => {
     // Restore saved state if available
     if (savedState) {
+      isRestoringRef.current = true;
       setUserAnswer(savedState.userAnswer);
       setBlankInput(savedState.blankInput);
       setSubmitted(savedState.submitted);
@@ -61,6 +63,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
         ? [savedState.blankInput.trim()]
         : savedState.userAnswer;
     } else {
+      isRestoringRef.current = false;
       setUserAnswer([]);
       setBlankInput('');
       setSubmitted(false);
@@ -78,7 +81,23 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       autoAdvanceTimerRef.current = null;
     }
     abortRef.current?.abort();
-  }, [question.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [question.id]);
+
+  // Auto-advance on correct answer (skip if restoring from saved state)
+  useEffect(() => {
+    if (isRestoringRef.current) {
+      isRestoringRef.current = false;
+      return;
+    }
+    if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance) {
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        onAutoAdvance();
+      }, 450);
+      return () => {
+        if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      };
+    }
+  }, [submitted, status, showAnswerImmediately, onAutoAdvance]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Notify parent of state changes
   useEffect(() => {
@@ -92,18 +111,6 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       setIsFavorite(!!f);
     });
   }, [bankId, question.id]);
-
-  // Auto-advance on correct answer
-  useEffect(() => {
-    if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance) {
-      autoAdvanceTimerRef.current = setTimeout(() => {
-        onAutoAdvance();
-      }, 450);
-      return () => {
-        if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
-      };
-    }
-  }, [submitted, status, showAnswerImmediately, onAutoAdvance]);
 
   async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number) {
     if (recordIdRef.current !== null) {
@@ -377,7 +384,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
             </div>
           )}
 
-          {(question.explanation || status === 'wrong') && (
+          {submitted && (
             <button
               onClick={() => {
                 if (question.explanation) {
