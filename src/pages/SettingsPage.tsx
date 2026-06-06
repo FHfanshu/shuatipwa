@@ -185,11 +185,12 @@ export default function SettingsPage() {
     if (!confirm('确定清空所有数据？\n此操作不可撤销！')) return;
     if (!confirm('再次确认：删除所有题库、做题记录和收藏？')) return;
     try {
-      await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites], async () => {
+      await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations], async () => {
         await db.banks.clear();
         await db.questions.clear();
         await db.records.clear();
         await db.favorites.clear();
+        await db.aiExplanations.clear();
       });
       showToast('success', '所有数据已清空');
     } catch (e: any) {

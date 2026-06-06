@@ -6,6 +6,7 @@ const db = new Dexie('ShuaTiDB') as Dexie & {
   questions: EntityTable<Question, 'id'>;
   records: EntityTable<PracticeRecord, 'id'>;
   favorites: EntityTable<Favorite, 'id'>;
+  aiExplanations: EntityTable<{ id?: number; questionId: string; explanation: string; createdAt: number }, 'id'>;
 };
 
 db.version(1).stores({
@@ -13,6 +14,13 @@ db.version(1).stores({
   questions: 'id, bankId, type',
   records: '++id, bankId, questionId, status, timestamp, [bankId+questionId]',
   favorites: '++id, bankId, questionId, timestamp, [bankId+questionId]',
+});
+
+db.version(2).stores({
+  aiExplanations: '++id, questionId, createdAt',
+}).upgrade(async tx => {
+  // No data migration needed for new table
+  void tx;
 });
 
 export { db };

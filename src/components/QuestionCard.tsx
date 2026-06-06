@@ -41,6 +41,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const [aiError, setAiError] = useState('');
   const [showExplanation, setShowExplanation] = useState(false);
   const [recordId, setRecordId] = useState<number | null>(null);
+  const [aiCacheId, setAiCacheId] = useState<number | null>(null);
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRestoringRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -76,6 +77,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     setAiLoading(false);
     setAiError('');
     setShowExplanation(false);
+    setAiCacheId(null);
     if (autoAdvanceTimerRef.current) {
       clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
@@ -194,14 +196,28 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     }
   };
 
-  const handleAIExplanation = async () => {
+  const handleAIExplanation = async (forceRefresh = false) => {
+    // Try loading from cache first
+    if (!forceRefresh) {
+      const cached = await db.aiExplanations.where('questionId').equals(question.id).first();
+      if (cached) {
+        setAiExplanation(cached.explanation);
+        setAiCacheId(cached.id ?? null);
+        setShowExplanation(true);
+        return;
+      }
+    }
+
     const config = getAIConfig();
     if (!config) {
       setAiError('请先在设置中配置 AI 接口');
       return;
     }
+    setShowExplanation(true);
     setAiLoading(true);
     setAiError('');
+    setAiExplanation('');
+    setAiCacheId(null);
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -218,6 +234,17 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       for await (const chunk of streamExplanation(questionText, correctText, userText, config, controller.signal)) {
         fullText += chunk;
         setAiExplanation(fullText);
+      }
+      // Cache the result
+      if (fullText) {
+        // Delete old cache if exists
+        if (aiCacheId) await db.aiExplanations.delete(aiCacheId);
+        const newId = await db.aiExplanations.add({
+          questionId: question.id,
+          explanation: fullText,
+          createdAt: Date.now(),
+        });
+        setAiCacheId(newId);
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -446,9 +473,14 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
                 <Icon name="lightbulb" size={18} className="text-accent" />
                 AI 解析
               </h3>
-              <button onClick={() => { setAiExplanation(''); setAiError(''); }} className="p-1 active:bg-bg-secondary rounded-lg">
-                <Icon name="x" size={20} className="text-text-muted" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => handleAIExplanation(true)} className="p-1.5 active:bg-bg-secondary rounded-lg" title="重新生成">
+                  <Icon name="refresh-cw" size={16} className="text-text-muted" />
+                </button>
+                <button onClick={() => { setAiExplanation(''); setAiError(''); }} className="p-1.5 active:bg-bg-secondary rounded-lg">
+                  <Icon name="x" size={20} className="text-text-muted" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-4">
               {aiLoading && !aiExplanation ? (

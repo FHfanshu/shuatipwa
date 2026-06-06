@@ -417,11 +417,12 @@ export async function importFullBackup(file: File): Promise<void> {
     throw new Error('备份版本不支持');
   }
 
-  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites], async () => {
+  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations], async () => {
     await db.banks.clear();
     await db.questions.clear();
     await db.records.clear();
     await db.favorites.clear();
+    await db.aiExplanations.clear();
 
     if (data.banks) await db.banks.bulkAdd(data.banks);
     for (const questions of Object.values(data.questions || {})) {
