@@ -25,22 +25,28 @@ export function getAIConfig(): AIConfig | null {
 }
 
 export async function* streamExplanation(
+  typeLabel: string,
   questionText: string,
+  optionsText: string,
   correctAnswer: string,
   userAnswer: string,
   config: AIConfig,
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const url = config.endpoint.replace(/\/$/, '') + '/chat/completions';
+
+  let userContent = `题型：${typeLabel}\n题目：${questionText}`;
+  if (optionsText) userContent += `\n选项：\n${optionsText}`;
+  userContent += `\n正确答案：${correctAnswer}`;
+  userContent += `\n学生答案：${userAnswer}`;
+  userContent += `\n\n请解析这道题。`;
+
   const body = {
     model: config.model,
     stream: true,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: `题目：${questionText}\n正确答案：${correctAnswer}\n学生答案：${userAnswer}\n\n请解析这道题。`,
-      },
+      { role: 'user', content: userContent },
     ],
   };
 

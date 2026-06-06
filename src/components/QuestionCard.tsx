@@ -222,7 +222,10 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const questionText = question.question;
+      const typeLabel = { single: '单选', multiple: '多选', judge: '判断', blank: '填空', short: '简答' }[question.type];
+      const optionsText = question.options
+        ? Object.entries(question.options).map(([k, v]) => `${k}. ${v}`).join('\n')
+        : '';
       const correctText = question.options
         ? question.answer.map(a => `${a}. ${question.options![a]}`).join(', ')
         : question.answer.join(', ');
@@ -231,7 +234,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
         : '(未作答)';
 
       let fullText = '';
-      for await (const chunk of streamExplanation(questionText, correctText, userText, config, controller.signal)) {
+      for await (const chunk of streamExplanation(typeLabel, question.question, optionsText, correctText, userText, config, controller.signal)) {
         fullText += chunk;
         setAiExplanation(fullText);
       }
