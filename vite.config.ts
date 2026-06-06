@@ -35,6 +35,8 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,woff2}'],
           navigateFallback: 'index.html',
+          skipWaiting: true,
+          clientsClaim: true,
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/.*\.(html|htm)$/i,
