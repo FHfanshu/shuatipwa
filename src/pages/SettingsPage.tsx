@@ -6,6 +6,7 @@ import Icon from '../components/Icon';
 import { useTheme } from '../contexts/ThemeContext';
 import type { Theme, ColorPalette } from '../contexts/ThemeContext';
 import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/ThemeContext';
+import { CURRENT_VERSION, useVersionCheck } from '../utils/version';
 
 const AI_PROMPT = `请将以下题目内容转换为 JSON 格式，严格遵循以下结构：
 
@@ -138,6 +139,7 @@ export default function SettingsPage() {
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('ai_model') || 'deepseek-chat');
 
   const aiConfigured = Boolean(aiEndpoint && aiKey && aiModel);
+  const { hasUpdate, latestVersion, applyUpdate } = useVersionCheck();
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
@@ -418,8 +420,21 @@ export default function SettingsPage() {
         </div>
 
         {/* 版本 */}
-        <div className="text-center pt-4 pb-2">
-          <span className="text-xs text-text-muted">v1.0.0</span>
+        <div className="text-center pt-4 pb-2 space-y-2">
+          {hasUpdate ? (
+            <button
+              onClick={applyUpdate}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/10 text-accent border border-accent/25 text-sm font-medium active:scale-[0.98] transition-all"
+            >
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent" />
+              </span>
+              发现新版本 v{latestVersion}，点击更新
+            </button>
+          ) : (
+            <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
+          )}
         </div>
       </div>
     </div>
