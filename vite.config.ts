@@ -34,6 +34,17 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+          navigateFallback: 'index.html',
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/.*\.(html|htm)$/i,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'html-cache',
+                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 },
+              },
+            },
+          ],
         },
       }),
     ],
