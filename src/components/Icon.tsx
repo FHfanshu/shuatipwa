@@ -90,7 +90,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 const Icon: FC<IconProps> = ({ name, className = '', size = 20 }) => {
   const Comp = ICON_MAP[name];
-  if (!Comp) return <span className={className}>{name}</span>;
+  if (!Comp) {
+    if (import.meta.env.DEV) console.warn(`Unknown icon: ${name}`);
+    return <Circle size={size} className={className} />;
+  }
   const props: Record<string, unknown> = { size, className: `inline-flex items-center justify-center ${className}` };
   if (name === 'star-empty') props.fill = 'none';
   return <Comp {...props} />;
