@@ -178,8 +178,13 @@ export default function BanksPage() {
                 onRename={() => openRename(bank)}
                 onDelete={async () => {
                   if (confirm(`确定删除「${bank.name}」？\n此操作不可撤销！`)) {
-                    await deleteBankCascade(bank.id);
-                    setToast({ type: 'success', text: '题库已删除' });
+                    try {
+                      await deleteBankCascade(bank.id);
+                      setToast({ type: 'success', text: '题库已删除' });
+                    } catch (err) {
+                      console.error('删除题库失败:', err);
+                      setToast({ type: 'error', text: '删除失败，请重试' });
+                    }
                   }
                 }}
               />

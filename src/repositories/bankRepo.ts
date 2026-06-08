@@ -10,15 +10,14 @@ export async function renameBank(bankId: string, newName: string): Promise<void>
 }
 
 export async function deleteBankCascade(bankId: string): Promise<void> {
-  const questionIds = await db.questions.where('bankId').equals(bankId).primaryKeys();
-  if (questionIds.length > 0) {
-    await db.aiExplanations.where('questionId').anyOf(questionIds as string[]).delete();
-  }
-  await db.questions.where('bankId').equals(bankId).delete();
-  await db.records.where('bankId').equals(bankId).delete();
-  await db.favorites.where('bankId').equals(bankId).delete();
-  await db.practiceSessions.where('bankId').equals(bankId).delete();
-  await db.banks.delete(bankId);
+  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations, db.practiceSessions], async () => {
+    await db.questions.where('bankId').equals(bankId).delete();
+    await db.records.where('bankId').equals(bankId).delete();
+    await db.favorites.where('bankId').equals(bankId).delete();
+    await db.aiExplanations.where('bankId').equals(bankId).delete();
+    await db.practiceSessions.where('bankId').equals(bankId).delete();
+    await db.banks.delete(bankId);
+  });
 }
 
 export async function createBank(bank: QuestionBank): Promise<void> {
@@ -79,6 +78,9 @@ export async function updateBankQuestions(
     questionCount: oldQuestions.length - removedIds.length + toAdd.length,
     updatedAt: Date.now(),
   });
+
+  // 覆盖更新后旧 session 的 questionIds 可能失效，清掉
+  await db.practiceSessions.where('bankId').equals(bankId).delete();
 
   return { added: toAdd.length, updated: toUpdate.length, removed: removedIds.length };
 }

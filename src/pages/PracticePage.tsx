@@ -30,6 +30,8 @@ export default function PracticePage() {
   const [examCount, setExamCount] = useState(50);
   const [examStarted, setExamStarted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [showOverview, setShowOverview] = useState(false);
   const [restored, setRestored] = useState(false);
   const [questionStates, setQuestionStates] = useState<Map<number, QuestionState>>(new Map());
@@ -41,68 +43,76 @@ export default function PracticePage() {
 
     const load = async () => {
       setLoading(true);
+      setError(null);
 
-      if (mode === 'exam' && !examStarted) {
-        const qs = await loadQuestions(bankId, mode, { typeFilter });
-        setQuestions(qs);
-        setLoading(false);
-        return;
-      }
-
-      // resume=1：恢复上次会话的题目顺序
-      if (resume) {
-        const last = await loadLastPracticeSession();
-        if (last && last.bankId === bankId && last.mode === mode && last.questionIds.length > 0) {
-          const qs = await getQuestionsByIds(last.questionIds);
-          // getQuestionsByIds 不保证顺序，按保存的 questionIds 重排
-          const idToQ = new Map(qs.map(q => [q.id, q]));
-          const ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
-          if (ordered.length > 0) {
-            // 用 ordered 直接恢复记录，确保下标准确映射
-            const restored = await restoreFromRecords(bankId, mode, ordered);
-            setQuestions(ordered);
-            setResults(restored.results);
-            setQuestionStates(restored.questionStates);
-            setCurrentIndex(Math.min(last.currentIndex, ordered.length - 1));
-          } else {
-            const session = await loadPracticeSession(bankId, mode, { shuffle: false, typeFilter });
-            setQuestions(session.questions);
-            setResults(session.results);
-            setQuestionStates(session.questionStates);
-            setCurrentIndex(session.startIndex);
-          }
-          setRestored(true);
+      try {
+        if (mode === 'exam' && !examStarted) {
+          const qs = await loadQuestions(bankId, mode, { typeFilter });
+          setQuestions(qs);
           setLoading(false);
-          lastSavedRef.current = '';
           return;
         }
-      }
 
-      const session = await loadPracticeSession(bankId, mode, {
-        examCount: mode === 'exam' ? examCount : undefined,
-        typeFilter,
-      });
-
-      setQuestions(session.questions);
-      setResults(session.results);
-      setQuestionStates(session.questionStates);
-      setCurrentIndex(session.startIndex);
-      setRestored(true);
-      setLoading(false);
-      lastSavedRef.current = '';
-
-      // 顺序模式兜底：尝试从 localStorage 恢复（IndexedDB 优先，但 localStorage 可能更近）
-      if (mode === 'sequential' && Object.keys(session.results).length === 0) {
-        const saved = loadSavedProgress(bankId, mode);
-        if (saved && saved.currentIndex < session.questions.length) {
-          setCurrentIndex(saved.currentIndex);
-          setResults(saved.results);
+        // resume=1：恢复上次会话的题目顺序，失败则 fallback
+        if (resume) {
+          try {
+            const last = await loadLastPracticeSession();
+            if (last && last.bankId === bankId && last.mode === mode && last.questionIds.length > 0) {
+              const qs = await getQuestionsByIds(last.questionIds);
+              const idToQ = new Map(qs.map(q => [q.id, q]));
+              const ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
+              if (ordered.length > 0) {
+                const restored = await restoreFromRecords(bankId, mode, ordered);
+                setQuestions(ordered);
+                setResults(restored.results);
+                setQuestionStates(restored.questionStates);
+                setCurrentIndex(Math.min(last.currentIndex, ordered.length - 1));
+                setRestored(true);
+                setLoading(false);
+                lastSavedRef.current = '';
+                return;
+              }
+            }
+          } catch (resumeErr) {
+            console.warn('恢复上次练习失败，重新加载:', resumeErr);
+          }
+          // fallback：resume 失败走正常加载
         }
+
+        const session = await loadPracticeSession(bankId, mode, {
+          examCount: mode === 'exam' ? examCount : undefined,
+          typeFilter,
+        });
+
+        setQuestions(session.questions);
+        setResults(session.results);
+        setQuestionStates(session.questionStates);
+        setCurrentIndex(session.startIndex);
+        setRestored(true);
+        setLoading(false);
+        lastSavedRef.current = '';
+
+        // 顺序模式兜底：尝试从 localStorage 恢复（IndexedDB 优先，但 localStorage 可能更近）
+        if (mode === 'sequential' && Object.keys(session.results).length === 0) {
+          const saved = loadSavedProgress(bankId, mode);
+          if (saved && saved.currentIndex < session.questions.length) {
+            setCurrentIndex(saved.currentIndex);
+            setResults(saved.results);
+          }
+        }
+      } catch (err) {
+        console.error('加载练习失败:', err);
+        setQuestions([]);
+        setResults({});
+        setQuestionStates(new Map());
+        setError(err instanceof Error ? err.message : '加载题目失败，请返回题库重新进入');
+        setLoading(false);
+        setRestored(true);
       }
     };
 
     load();
-  }, [bankId, mode, examStarted, examCount, resume, typeFilter]);
+  }, [bankId, mode, examStarted, examCount, resume, typeFilter, retryCount]);
 
   // 保存 last practice session（非考试模式）
   useEffect(() => {
@@ -206,6 +216,26 @@ export default function PracticePage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-text-muted">加载中...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="px-4 pt-4">
+        <button onClick={() => navigate(-1)} className="text-accent text-sm mb-4 flex items-center gap-1">
+          <Icon name="arrow-left" size={16} /> 返回
+        </button>
+        <div className="flex flex-col items-center justify-center h-[60vh]">
+          <Icon name="alert-circle" size={56} className="text-red-400 mb-4" />
+          <div className="text-lg font-medium text-text-secondary">{error}</div>
+          <button
+            onClick={() => setRetryCount(c => c + 1)}
+            className="mt-4 px-6 py-2.5 bg-accent text-white rounded-xl text-sm font-medium active:bg-accent-hover"
+          >
+            重试
+          </button>
+        </div>
       </div>
     );
   }
