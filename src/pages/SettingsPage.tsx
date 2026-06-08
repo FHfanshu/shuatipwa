@@ -8,6 +8,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import type { Theme, ColorPalette } from '../contexts/ThemeContext';
 import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/ThemeContext';
 import { CURRENT_VERSION } from '../utils/version';
+import { forcePwaUpdate } from '../utils/pwaUpdate';
 import { AI_PROMPT } from '../utils/aiPrompt';
 
 function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
@@ -418,11 +419,12 @@ export default function SettingsPage() {
           <div className="flex items-center justify-center gap-2">
             <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
             <button
-              onClick={() => window.location.reload()}
-              className="p-1 active:bg-bg-secondary rounded-md"
-              title="刷新页面"
+              onClick={() => void forcePwaUpdate()}
+              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-text-muted active:bg-bg-secondary"
+              title="检查并刷新应用"
             >
-              <Icon name="refresh-cw" size={12} className="text-text-muted" />
+              <Icon name="refresh-cw" size={13} />
+              刷新
             </button>
           </div>
         </div>
