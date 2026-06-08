@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { clearAllData } from '../repositories/bankRepo';
 import { exportAllAsZip, downloadBlob } from '../utils/export';
 import { importFullBackup } from '../utils/import';
@@ -134,6 +135,7 @@ export default function SettingsPage() {
   const [exportProgress, setExportProgress] = useState<{ step: string; percent: number } | null>(null);
 
   const { theme, actualTheme, palette, setTheme, setPalette } = useTheme();
+  const navigate = useNavigate();
 
   const [aiEndpoint, setAiEndpoint] = useState(() => localStorage.getItem('ai_endpoint') || 'https://api.deepseek.com');
   const [aiKey, setAiKey] = useState(() => localStorage.getItem('ai_apiKey') || '');
@@ -441,7 +443,11 @@ export default function SettingsPage() {
         <div className="text-center pt-4 pb-2 space-y-2">
           {hasUpdate ? (
             <button
-              onClick={applyUpdate}
+              onClick={() => {
+                showToast('success', '正在更新，即将跳转...');
+                navigate('/');
+                setTimeout(() => applyUpdate(), 300);
+              }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/10 text-accent border border-accent/25 text-sm font-medium active:scale-[0.98] transition-all"
             >
               <span className="relative flex h-2.5 w-2.5">
@@ -454,7 +460,11 @@ export default function SettingsPage() {
             <div className="flex items-center justify-center gap-2">
               <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  showToast('success', '正在刷新...');
+                  navigate('/');
+                  setTimeout(() => window.location.reload(), 300);
+                }}
                 className="p-1 active:bg-bg-secondary rounded-md"
                 title="刷新页面"
               >
