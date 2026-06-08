@@ -46,7 +46,7 @@ export default function HomePage() {
     const totalQuestions = banks?.reduce((sum, bank) => sum + bank.questionCount, 0) ?? 0;
     const correct = records?.filter(r => r.status === 'correct').length ?? 0;
     const wrong = records?.filter(r => r.status === 'wrong').length ?? 0;
-    const answered = new Set(records?.map(r => r.questionId) ?? []).size;
+    const answered = new Set(records?.map(r => `${r.bankId}:${r.questionId}`) ?? []).size;
     const accuracy = correct + wrong > 0 ? Math.round((correct / (correct + wrong)) * 100) : null;
 
     const timestamps = records?.map(r => r.timestamp).filter(Boolean) as number[] | undefined;
@@ -107,7 +107,7 @@ export default function HomePage() {
             </div>
             <div className="space-y-2.5">
               {banks.slice(0, 4).map((bank, i) => (
-                <BankRow key={bank.id} bank={bank} records={records} delay={i} onClick={() => navigate('/banks')} />
+                <BankRow key={bank.id} bank={bank} records={records} delay={i} onClick={() => navigate(`/practice/${bank.id}/sequential`)} />
               ))}
             </div>
           </div>
