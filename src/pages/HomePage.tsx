@@ -6,6 +6,37 @@ import type { QuestionBank, PracticeRecord } from '../types';
 import Icon from '../components/Icon';
 import ThemeToggle from '../components/ThemeToggle';
 
+/* ── helpers ── */
+function dayKey(ts: number) {
+  return new Date(ts).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+}
+
+function computeDailyAccuracy(records: PracticeRecord[]): { label: string; value: number }[] {
+  const now = Date.now();
+  const days: { label: string; correct: number; wrong: number }[] = [];
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now - i * 86400000);
+    const label = `${d.getMonth() + 1}/${d.getDate()}`;
+    days.push({ label, correct: 0, wrong: 0 });
+  }
+
+  const labelMap = new Map(days.map(d => [d.label, d]));
+  for (const r of records) {
+    const key = dayKey(r.timestamp);
+    const bucket = labelMap.get(key);
+    if (!bucket) continue;
+    if (r.status === 'correct') bucket.correct++;
+    else if (r.status === 'wrong') bucket.wrong++;
+  }
+
+  return days.map(d => ({
+    label: d.label,
+    value: d.correct + d.wrong > 0 ? Math.round((d.correct / (d.correct + d.wrong)) * 100) : 0,
+  }));
+}
+
+/* ═══════════════════════════════════════════ */
 export default function HomePage() {
   const banks = useLiveQuery(() => db.banks.orderBy('updatedAt').reverse().toArray());
   const records = useLiveQuery(() => db.records.toArray());
@@ -13,15 +44,17 @@ export default function HomePage() {
 
   const homeStats = useMemo(() => {
     const totalQuestions = banks?.reduce((sum, bank) => sum + bank.questionCount, 0) ?? 0;
-    const correct = records?.filter(record => record.status === 'correct').length ?? 0;
-    const wrong = records?.filter(record => record.status === 'wrong').length ?? 0;
-    const answered = new Set(records?.map(record => record.questionId) ?? []).size;
+    const correct = records?.filter(r => r.status === 'correct').length ?? 0;
+    const wrong = records?.filter(r => r.status === 'wrong').length ?? 0;
+    const answered = new Set(records?.map(r => r.questionId) ?? []).size;
     const accuracy = correct + wrong > 0 ? Math.round((correct / (correct + wrong)) * 100) : null;
 
     const timestamps = records?.map(r => r.timestamp).filter(Boolean) as number[] | undefined;
     const daysSinceStart = timestamps && timestamps.length > 0
       ? Math.max(1, Math.ceil((Date.now() - Math.min(...timestamps)) / 86400000))
       : 0;
+
+    const dailyAccuracy = records ? computeDailyAccuracy(records) : [];
 
     return {
       totalQuestions,
@@ -30,6 +63,7 @@ export default function HomePage() {
       daysSinceStart,
       bankCount: banks?.length ?? 0,
       completionPct: totalQuestions > 0 ? Math.round((answered / totalQuestions) * 100) : 0,
+      dailyAccuracy,
     };
   }, [banks, records]);
 
@@ -42,31 +76,46 @@ export default function HomePage() {
   }
 
   return (
-    <div className="px-5 pt-5">
+    <div className="px-5 pt-5 pb-6">
       <HomeHeader />
 
       {banks.length === 0 ? (
         <EmptyState onBanks={() => navigate('/banks')} />
       ) : (
         <>
-          {/* Hero progress ring */}
-          <div className="animate-reveal-up reveal-delay-1">
-            <ProgressHero stats={homeStats} />
+          {/* ── Hero ── */}
+          <div className="mt-7 animate-reveal-up reveal-delay-1">
+            <HeroSection stats={homeStats} />
           </div>
 
-          {/* Continue last session */}
+          {/* ── Continue CTA ── */}
           <ContinueCard banks={banks} records={records} navigate={navigate} />
 
-          {/* Quick stat pills */}
-          <div className="mt-5 flex gap-2.5 animate-reveal-up reveal-delay-2">
-            <StatPill icon="database" label="题库" value={homeStats.bankCount} />
-            <StatPill icon="file-text" label="题目" value={homeStats.totalQuestions} />
-            <StatPill
-              icon="check-circle"
-              label="正确率"
-              value={homeStats.accuracy === null ? '--' : `${homeStats.accuracy}%`}
-            />
+          {/* ── Divider ── */}
+          <div className="my-6 h-px bg-border-subtle" />
+
+          {/* ── Recent banks ── */}
+          <div className="animate-reveal-up reveal-delay-4">
+            <div className="mb-3.5 flex items-baseline justify-between">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-text-primary">题库</h2>
+              <button
+                onClick={() => navigate('/banks')}
+                className="text-xs font-medium text-copper transition-colors hover:text-accent-hover"
+              >
+                查看全部
+              </button>
+            </div>
+            <div className="space-y-2.5">
+              {banks.slice(0, 4).map((bank, i) => (
+                <BankRow key={bank.id} bank={bank} records={records} delay={i} onClick={() => navigate('/banks')} />
+              ))}
+            </div>
           </div>
+
+          {/* ── Motivation ── */}
+          <p className="mt-10 text-center text-[11px] tracking-widest text-text-muted/60 animate-reveal-up reveal-delay-6">
+            每日坚持，知识日积月累
+          </p>
         </>
       )}
     </div>
@@ -78,110 +127,152 @@ function HomeHeader() {
   return (
     <header className="flex items-start justify-between gap-4 animate-reveal-up">
       <div className="min-w-0 pt-1">
-        <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-text-primary">
-          刷题助手
-        </h1>
-        <p className="mt-1 text-[13px] text-text-muted tracking-wide">
-          本地离线 · 题库管理与练习
-        </p>
+        <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-text-primary">刷题助手</h1>
+        <p className="mt-1 text-[13px] text-text-muted tracking-wide">本地离线 · 题库管理与练习</p>
       </div>
       <ThemeToggle className="shrink-0 border border-border-subtle bg-surface-glass backdrop-blur-md rounded-xl" />
     </header>
   );
 }
 
-/* ── Progress Hero Ring ── */
-function ProgressHero({
+/* ── Hero Section ── */
+function HeroSection({
   stats,
 }: {
-  stats: { totalQuestions: number; answered: number; accuracy: number | null; completionPct: number; daysSinceStart: number };
+  stats: {
+    totalQuestions: number;
+    answered: number;
+    accuracy: number | null;
+    completionPct: number;
+    dailyAccuracy: { label: string; value: number }[];
+  };
 }) {
-  const radius = 54;
-  const stroke = 6;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (stats.completionPct / 100) * circumference;
+  const hasData = stats.accuracy !== null;
 
   return (
-    <section className="mt-7 flex items-center gap-7">
-      {/* Ring */}
-      <div className="relative shrink-0" style={{ width: 136, height: 136 }}>
-        {/* Glow */}
-        <div
-          className="ring-glow absolute inset-2 rounded-full"
-          style={{ background: 'radial-gradient(circle, var(--copper-glow) 0%, transparent 70%)' }}
-        />
-        <svg width={136} height={136} viewBox="0 0 136 136">
-          {/* Track */}
-          <circle
-            cx={68}
-            cy={68}
-            r={radius}
-            fill="none"
-            stroke="var(--border-default)"
-            strokeWidth={stroke}
-          />
-          {/* Fill */}
-          <circle
-            cx={68}
-            cy={68}
-            r={radius}
-            fill="none"
-            stroke="var(--copper)"
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            className="progress-ring-circle"
-            style={{
-              strokeDasharray: circumference,
-              '--ring-circumference': circumference,
-              '--ring-offset': offset,
-            } as React.CSSProperties}
-          />
-        </svg>
-        {/* Center content */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="relative">
-            <span className="text-3xl font-semibold text-text-primary">{stats.completionPct}</span>
-            <span className="absolute text-[10px] font-medium text-text-muted" style={{ right: -11, bottom: '25%' }}>%</span>
-          </span>
+    <section className="rounded-2xl border border-border-subtle bg-bg-card px-5 py-6">
+      {/* Top: two big numbers */}
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-widest text-text-muted">总体进度</p>
+          <div className="mt-1.5 flex items-baseline gap-1">
+            <span className="text-[42px] font-bold leading-none text-text-primary tabular-nums">{stats.completionPct}</span>
+            <span className="text-base font-medium text-text-muted">%</span>
+          </div>
+          <p className="mt-1 text-xs text-text-muted">
+            {stats.answered}/{stats.totalQuestions} 题
+          </p>
         </div>
-      </div>
-
-      {/* Summary text */}
-      <div className="min-w-0 flex-1">
-        <p className="text-sm leading-relaxed text-text-secondary">
-          {stats.totalQuestions === 0
-            ? '导入题库后即可开始练习'
-            : stats.completionPct === 0
-              ? `共 ${stats.totalQuestions} 题等待练习`
-              : stats.completionPct < 100
-                ? `已完成 ${stats.answered} / ${stats.totalQuestions} 题，继续加油！`
-                : '所有题目已完成，太厉害了！'}
-        </p>
-        {stats.accuracy !== null && stats.daysSinceStart > 0 && (
-          <div className="mt-3 flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-sage" />
-            <span className="text-xs text-text-muted">
-              最近 {stats.daysSinceStart} 天正确率 <span className="font-semibold text-copper">{stats.accuracy}%</span>
-            </span>
+        {hasData && (
+          <div className="text-right">
+            <p className="text-[11px] font-medium uppercase tracking-widest text-text-muted">正确率</p>
+            <div className="mt-1.5 flex items-baseline gap-1">
+              <span className="text-[42px] font-bold leading-none text-copper tabular-nums">{stats.accuracy}</span>
+              <span className="text-base font-medium text-copper/60">%</span>
+            </div>
+            <p className="mt-1 text-xs text-text-muted">
+              {stats.answered > 0 ? `${stats.answered} 题已答` : '暂无数据'}
+            </p>
           </div>
         )}
       </div>
+
+      {/* Line chart */}
+      {stats.dailyAccuracy.some(d => d.value > 0) && (
+        <div className="mt-6">
+          <p className="mb-3 text-[10px] font-medium tracking-wide text-text-muted">近 7 天正确率</p>
+          <LineChart data={stats.dailyAccuracy} />
+        </div>
+      )}
     </section>
   );
 }
 
-/* ── Stat Pill ── */
-function StatPill({ icon, label, value }: { icon: string; label: string; value: number | string }) {
+/* ── Line Chart (SVG) ── */
+function LineChart({ data }: { data: { label: string; value: number }[] }) {
+  const padL = 28;
+  const padR = 8;
+  const padT = 4;
+  const padB = 22;
+  const w = 300;
+  const h = 100;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+
+  const pts = data.map((d, i) => ({
+    x: padL + (i / (data.length - 1)) * innerW,
+    y: padT + (1 - d.value / 100) * innerH,
+    value: d.value,
+    label: d.label,
+  }));
+
+  // Smooth path via cubic bezier
+  let linePath = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length; i++) {
+    const prev = pts[i - 1];
+    const curr = pts[i];
+    const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
+    const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
+    linePath += ` C ${cpx1} ${prev.y}, ${cpx2} ${curr.y}, ${curr.x} ${curr.y}`;
+  }
+
+  // Gradient fill path
+  const fillPath = `${linePath} L ${pts[pts.length - 1].x} ${padT + innerH} L ${pts[0].x} ${padT + innerH} Z`;
+
+  const gridLines = [0, 50, 100];
+  const gradId = 'lg-grad';
+
   return (
-    <div className="flex flex-1 items-center gap-2.5 rounded-2xl border border-border-subtle bg-bg-card px-3.5 py-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-copper-glow text-copper">
-        <Icon name={icon} size={16} />
-      </div>
-      <div className="min-w-0">
-        <div className="text-base font-semibold leading-none text-text-primary">{value}</div>
-        <div className="mt-0.5 text-[11px] text-text-muted">{label}</div>
-      </div>
-    </div>
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: 100 }}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--copper)" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="var(--copper)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      {/* Horizontal grid lines */}
+      {gridLines.map(v => {
+        const y = padT + (1 - v / 100) * innerH;
+        return (
+          <g key={v}>
+            <line x1={padL} y1={y} x2={padL + innerW} y2={y} stroke="var(--border-default)" strokeWidth="0.5" />
+            <text x={padL - 4} y={y + 3} textAnchor="end" fill="var(--text-muted)" fontSize="8">
+              {v}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Gradient fill under line */}
+      <path d={fillPath} fill={`url(#${gradId})`} />
+
+      {/* Line */}
+      <path d={linePath} fill="none" stroke="var(--copper)" strokeWidth="2" strokeLinecap="round" />
+
+      {/* Dots */}
+      {pts.map((p, i) => {
+        const isToday = i === pts.length - 1;
+        return (
+          <g key={i}>
+            {isToday && (
+              <circle cx={p.x} cy={p.y} r="6" fill="var(--copper)" opacity="0.15" />
+            )}
+            <circle
+              cx={p.x} cy={p.y}
+              r={isToday ? 4 : 2.5}
+              fill={isToday ? 'var(--copper)' : 'var(--bg-card)'}
+              stroke="var(--copper)"
+              strokeWidth={isToday ? 2 : 1.5}
+            />
+            {/* Day label */}
+            <text x={p.x} y={h - 4} textAnchor="middle" fill={isToday ? 'var(--copper)' : 'var(--text-muted)'} fontSize="8" fontWeight={isToday ? '600' : '400'}>
+              {p.label.split('/')[1]}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -198,43 +289,32 @@ function ContinueCard({
   const info = useMemo(() => {
     if (!records || records.length === 0) return null;
 
-    // 找最近一次做题记录
     const latest = records.reduce((a, b) => (a.timestamp > b.timestamp ? a : b));
     const bank = banks.find(b => b.id === latest.bankId);
     if (!bank) return null;
 
-    // 尝试从 localStorage 恢复进度（顺序模式）
     let questionIndex: number | null = null;
     try {
       const saved = localStorage.getItem(`practice-progress-${bank.id}-sequential`);
       if (saved) {
         const parsed = JSON.parse(saved) as { currentIndex: number };
-        if (typeof parsed.currentIndex === 'number') {
-          questionIndex = parsed.currentIndex;
-        }
+        if (typeof parsed.currentIndex === 'number') questionIndex = parsed.currentIndex;
       }
     } catch { /* ignore */ }
 
-    // 如果没有 localStorage 记录，根据 records 推算顺序模式的起始位置
     if (questionIndex === null) {
       const bankRecords = records.filter(r => r.bankId === bank.id);
       const answeredIds = new Set(bankRecords.map(r => r.questionId));
-      // 顺序模式起始题号 = 已答数量（0-based）
       questionIndex = Math.min(answeredIds.size, bank.questionCount - 1);
     }
 
-    return {
-      bankName: bank.name,
-      bankId: bank.id,
-      questionIndex,
-      questionCount: bank.questionCount,
-    };
+    return { bankName: bank.name, bankId: bank.id, questionIndex, questionCount: bank.questionCount };
   }, [banks, records]);
 
   if (!info) return null;
 
   return (
-    <div className="mt-5 animate-reveal-up reveal-delay-1">
+    <div className="mt-3 animate-reveal-up reveal-delay-2">
       <button
         onClick={() => navigate(`/practice/${info.bankId}/sequential`)}
         className="group flex w-full items-center gap-4 rounded-2xl border border-border-subtle bg-bg-card px-5 py-4 text-left transition-all duration-300 hover:border-border-default hover:shadow-[0_8px_32px_-12px_var(--copper-glow)] active:scale-[0.985]"
@@ -251,6 +331,49 @@ function ContinueCard({
         <Icon name="chevron-right" size={20} className="shrink-0 text-copper/60 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-copper" />
       </button>
     </div>
+  );
+}
+
+/* ── Bank Row (compact) ── */
+function BankRow({
+  bank,
+  records,
+  delay,
+  onClick,
+}: {
+  bank: QuestionBank;
+  records?: PracticeRecord[];
+  delay: number;
+  onClick: () => void;
+}) {
+  const stats = useMemo(() => {
+    const bankRecords = records?.filter(r => r.bankId === bank.id) ?? [];
+    const uniqueAnswered = new Set(bankRecords.map(r => r.questionId)).size;
+    const progress = bank.questionCount > 0 ? Math.round((uniqueAnswered / bank.questionCount) * 100) : 0;
+    return { uniqueAnswered, progress };
+  }, [bank.id, bank.questionCount, records]);
+
+  return (
+    <button
+      onClick={onClick}
+      className={`group flex w-full items-center gap-3.5 rounded-xl border border-border-subtle bg-bg-card px-4 py-3 text-left transition-all duration-300 hover:border-border-default active:scale-[0.985] animate-reveal-up reveal-delay-${Math.min(delay + 5, 10)}`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold text-text-primary truncate">{bank.name}</p>
+        <p className="mt-0.5 text-[11px] text-text-muted">
+          {stats.uniqueAnswered}/{bank.questionCount} 题
+        </p>
+      </div>
+      <div className="flex items-center gap-2.5 shrink-0">
+        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-secondary">
+          <div
+            className="h-full rounded-full bg-copper transition-all duration-700 ease-out"
+            style={{ width: `${Math.max(stats.progress, 3)}%` }}
+          />
+        </div>
+        <span className="w-9 text-right text-[11px] font-semibold text-text-muted">{stats.progress}%</span>
+      </div>
+    </button>
   );
 }
 
