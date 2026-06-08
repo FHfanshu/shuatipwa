@@ -1,6 +1,10 @@
 import { db } from '../db';
 import type { PracticeRecord } from '../types';
 
+export async function getAllRecords(): Promise<PracticeRecord[]> {
+  return db.records.toArray();
+}
+
 export async function upsertRecord(
   record: Omit<PracticeRecord, 'id'>,
   existingId?: number | null

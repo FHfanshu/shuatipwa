@@ -1,3 +1,12 @@
+/**
+ * AI 解析服务（Service 层）
+ * 职责：缓存查询、配置读取、流式调用、缓存写入
+ */
+
+import type { Question } from '../types';
+import { getQuestionTypeLabel } from '../domain/questionType';
+import { getCachedExplanation, cacheExplanation } from '../repositories/aiExplanationRepo';
+
 const SYSTEM_PROMPT = `你是一位耐心的老师，正在给一位同学讲解题目。语气亲切自然，一对一聊天的感觉。
 
 讲解要求：
@@ -25,29 +34,52 @@ export function getAIConfig(): AIConfig | null {
   return { endpoint, apiKey, model };
 }
 
-export async function* streamExplanation(
-  typeLabel: string,
-  questionText: string,
-  optionsText: string,
-  correctAnswer: string,
-  userAnswer: string,
-  config: AIConfig,
-  signal?: AbortSignal,
-): AsyncGenerator<string> {
-  const url = config.endpoint.replace(/\/$/, '') + '/chat/completions';
+/**
+ * 查询缓存的 AI 解析
+ */
+export async function loadCachedExplanation(
+  questionId: string
+): Promise<{ id?: number; explanation: string } | undefined> {
+  return getCachedExplanation(questionId);
+}
 
-  let userContent = `题型：${typeLabel}\n题目：${questionText}`;
-  if (optionsText) userContent += `\n选项：\n${optionsText}`;
-  userContent += `\n正确答案：${correctAnswer}`;
-  userContent += `\n学生答案：${userAnswer}`;
-  userContent += `\n\n请解析这道题。`;
+/**
+ * 生成 AI 解析（流式）并自动缓存
+ *
+ * @returns 解析完成后返回缓存 id；如果被 abort 则返回 null
+ */
+export async function generateExplanation(
+  question: Question,
+  userAnswer: string[],
+  onChunk: (text: string) => void,
+  existingCacheId?: number | null,
+  signal?: AbortSignal,
+): Promise<number | null> {
+  const config = getAIConfig();
+  if (!config) {
+    throw new Error('请先在设置中配置 AI 接口');
+  }
+
+  const typeLabel = getQuestionTypeLabel(question.type);
+  const optionsText = question.options
+    ? Object.entries(question.options).map(([k, v]) => `${k}. ${v}`).join('\n')
+    : '';
+  const correctText = question.options
+    ? question.answer.map(a => `${a}. ${question.options![a]}`).join(', ')
+    : question.answer.join(', ');
+  const userText = userAnswer.length > 0
+    ? (question.options ? userAnswer.map(a => `${a}. ${question.options![a]}`).join(', ') : userAnswer.join(', '))
+    : '(未作答)';
+
+  let fullText = '';
+  const url = config.endpoint.replace(/\/$/, '') + '/chat/completions';
 
   const body = {
     model: config.model,
     stream: true,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
+      { role: 'user', content: `题型：${typeLabel}\n题目：${question.question}${optionsText ? `\n选项：\n${optionsText}` : ''}\n正确答案：${correctText}\n学生答案：${userText}\n\n请解析这道题。` },
     ],
   };
 
@@ -79,14 +111,23 @@ export async function* streamExplanation(
       const trimmed = line.trim();
       if (!trimmed || !trimmed.startsWith('data: ')) continue;
       const data = trimmed.slice(6);
-      if (data === '[DONE]') return;
+      if (data === '[DONE]') break;
       try {
         const parsed = JSON.parse(data);
         const content = parsed.choices?.[0]?.delta?.content;
-        if (content) yield content;
+        if (content) {
+          fullText += content;
+          onChunk(fullText);
+        }
       } catch {
         // skip malformed JSON lines
       }
     }
   }
+
+  // 缓存结果
+  if (fullText) {
+    return cacheExplanation(question.id, fullText, existingCacheId);
+  }
+  return null;
 }

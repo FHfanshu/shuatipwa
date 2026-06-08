@@ -1,4 +1,9 @@
 import { db } from '../db';
+import type { Favorite } from '../types';
+
+export async function getAllFavorites(): Promise<Favorite[]> {
+  return db.favorites.toArray();
+}
 
 export async function isFavorited(bankId: string, questionId: string): Promise<boolean> {
   const existing = await db.favorites.where('[bankId+questionId]').equals([bankId, questionId]).first();

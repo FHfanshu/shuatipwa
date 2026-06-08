@@ -1,9 +1,9 @@
 import { read, utils } from 'xlsx';
 import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db';
 import type { Question, QuestionBank, QuestionType } from '../types';
-import { parseTextToQuestions, inferQuestionType } from './textParser';
+import { parseTextToQuestions, inferQuestionType } from '../domain/questionParser';
+import { createBankWithQuestions, replaceAllData } from '../repositories/bankRepo';
 
 // ============ JSON 导入 ============
 
@@ -40,13 +40,6 @@ function parseAnswerText(raw: string, hasOptions: boolean): string[] {
   return compact.split('').filter(c => /[A-Za-z]/.test(c)).map(c => c.toUpperCase());
 }
 
-function inferRawQuestionType(answer: string[], options?: Record<string, string>, question = ''): QuestionType {
-  if (answer.length === 1 && (answer[0] === 'true' || answer[0] === 'false')) return 'judge';
-  if (options && Object.keys(options).length > 0) return answer.length > 1 ? 'multiple' : 'single';
-  if (question.includes('____') || question.includes('（  ）') || question.includes('（）')) return 'blank';
-  return 'short';
-}
-
 function normalizeQuestion(raw: RawQuestion, bankId: string): Question {
   // 规范化 answer 为数组
   let answer: string[];
@@ -77,7 +70,9 @@ function normalizeQuestion(raw: RawQuestion, bankId: string): Question {
     }
   }
 
-  const type = isQuestionType(raw.type) ? raw.type : inferRawQuestionType(answer, options, raw.question);
+  const type = isQuestionType(raw.type)
+    ? raw.type
+    : inferQuestionType(answer, options, raw.question);
   if (type === 'single' || type === 'multiple') {
     answer = answer.map(a => a.toUpperCase());
   } else if (type === 'judge') {
@@ -140,7 +135,6 @@ function parseTextQuestions(text: string): RawQuestion[] {
     // 解析答案
     let answer: string[] = [];
     if (answerLine) {
-      // "B" "A,C" "AC" "A、C" "对" "错" "正确" "错误"
       answer = parseAnswerText(answerLine, Object.keys(options).length > 0);
     }
 
@@ -151,7 +145,6 @@ function parseTextQuestions(text: string): RawQuestion[] {
     } else if (answer.length > 1) {
       type = 'multiple';
     } else if (Object.keys(options).length === 0) {
-      // 没有选项，可能是填空或简答
       type = answer.length > 0 ? 'blank' : 'short';
     }
 
@@ -276,7 +269,7 @@ function parseRows(data: unknown[][]): RawQuestion[] {
     const typeFromHeader = typeHeaderIdx >= 0 ? cols[typeHeaderIdx] : undefined;
     const type = isQuestionType(typeFromHeader)
       ? typeFromHeader
-      : inferRawQuestionType(answer, Object.keys(options).length > 0 ? options : undefined, question);
+      : inferQuestionType(answer, Object.keys(options).length > 0 ? options : undefined, question);
 
     questions.push({
       question,
@@ -386,11 +379,8 @@ export async function importFromFile(
   // 标准化题目
   const questions = rawQuestions.map(raw => normalizeQuestion(raw, bankId));
 
-  // 写入数据库
-  await db.transaction('rw', [db.banks, db.questions], async () => {
-    await db.banks.add(bank);
-    await db.questions.bulkAdd(questions);
-  });
+  // 写入数据库（单事务）
+  await createBankWithQuestions(bank, questions);
 
   return { bank, count: questions.length };
 }
@@ -417,18 +407,13 @@ export async function importFullBackup(file: File): Promise<void> {
     throw new Error('备份版本不支持');
   }
 
-  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations], async () => {
-    await db.banks.clear();
-    await db.questions.clear();
-    await db.records.clear();
-    await db.favorites.clear();
-    await db.aiExplanations.clear();
+  const banks: QuestionBank[] = data.banks || [];
+  const questions: Question[] = [];
+  for (const qs of Object.values(data.questions || {})) {
+    questions.push(...(qs as Question[]));
+  }
+  const records = data.records || [];
+  const favorites = data.favorites || [];
 
-    if (data.banks) await db.banks.bulkAdd(data.banks);
-    for (const questions of Object.values(data.questions || {})) {
-      await db.questions.bulkAdd(questions as Question[]);
-    }
-    if (data.records) await db.records.bulkAdd(data.records);
-    if (data.favorites) await db.favorites.bulkAdd(data.favorites);
-  });
+  await replaceAllData(banks, questions, records, favorites);
 }

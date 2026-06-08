@@ -1,42 +1,14 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { clearAllData } from '../repositories/bankRepo';
-import { exportAllAsZip, downloadBlob } from '../utils/export';
-import { importFullBackup } from '../utils/import';
+import { exportAllAsZip } from '../services/exportService';
+import { downloadBlob } from '../utils/export';
+import { importFullBackup } from '../services/importService';
 import Icon from '../components/Icon';
 import { useTheme } from '../contexts/ThemeContext';
 import type { Theme, ColorPalette } from '../contexts/ThemeContext';
 import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/ThemeContext';
-import { CURRENT_VERSION, useVersionCheck } from '../utils/version';
-
-const AI_PROMPT = `请将以下题目内容转换为 JSON 格式，严格遵循以下结构：
-
-{
-  "name": "题库名称",
-  "questions": [
-    {
-      "type": "single",
-      "question": "题目内容",
-      "options": {"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"},
-      "answer": ["B"],
-      "explanation": "解析（如有）"
-    }
-  ]
-}
-
-规则：
-1. type 取值：single（单选）/ multiple（多选）/ judge（判断）/ blank（填空）/ short（简答）
-2. 单选题 answer 为一个字母的数组，如 ["B"]
-3. 多选题 answer 为多个字母的数组，如 ["A", "C"]
-4. 判断题没有 options，answer 为 ["true"] 或 ["false"]
-5. 填空题没有 options，answer 为答案文本数组
-6. 简答题没有 options，answer 为参考答案数组
-7. options 的 key 必须是大写字母 A/B/C/D/E...
-8. 保持原题内容不变，不要修改题意
-9. 只输出 JSON，不要其他内容
-
-以下是题目内容：
-`;
+import { CURRENT_VERSION } from '../utils/version';
+import { AI_PROMPT } from '../utils/aiPrompt';
 
 function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -135,14 +107,12 @@ export default function SettingsPage() {
   const [exportProgress, setExportProgress] = useState<{ step: string; percent: number } | null>(null);
 
   const { theme, actualTheme, palette, setTheme, setPalette } = useTheme();
-  const navigate = useNavigate();
 
   const [aiEndpoint, setAiEndpoint] = useState(() => localStorage.getItem('ai_endpoint') || 'https://api.deepseek.com');
   const [aiKey, setAiKey] = useState(() => localStorage.getItem('ai_apiKey') || '');
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('ai_model') || 'deepseek-chat');
 
   const aiConfigured = Boolean(aiEndpoint && aiKey && aiModel);
-  const { hasUpdate, latestVersion } = useVersionCheck();
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
@@ -440,40 +410,17 @@ export default function SettingsPage() {
         </div>
 
         {/* 版本 */}
-        <div className="text-center pt-4 pb-2 space-y-2">
-          {hasUpdate ? (
+        <div className="text-center pt-4 pb-2">
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
             <button
-              onClick={() => {
-                sessionStorage.setItem('pendingToast', JSON.stringify({
-                  type: 'success', text: `正在更新到 v${latestVersion}...`, action: 'reload'
-                }));
-                navigate('/');
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/10 text-accent border border-accent/25 text-sm font-medium active:scale-[0.98] transition-all"
+              onClick={() => window.location.reload()}
+              className="p-1 active:bg-bg-secondary rounded-md"
+              title="刷新页面"
             >
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent" />
-              </span>
-              发现新版本 v{latestVersion}，点击更新
+              <Icon name="refresh-cw" size={12} className="text-text-muted" />
             </button>
-          ) : (
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
-              <button
-                onClick={() => {
-                  sessionStorage.setItem('pendingToast', JSON.stringify({
-                    type: 'success', text: '正在刷新...', action: 'reload'
-                  }));
-                  navigate('/');
-                }}
-                className="p-1 active:bg-bg-secondary rounded-md"
-                title="刷新页面"
-              >
-                <Icon name="refresh-cw" size={12} className="text-text-muted" />
-              </button>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

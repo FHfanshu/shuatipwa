@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Question, AnswerStatus } from '../types';
-import { checkAnswer, getQuestionTypeLabel, getQuestionTypeColor } from '../utils/helper';
-import { getAIConfig, streamExplanation } from '../utils/ai';
+import { checkAnswer, getQuestionTypeColor } from '../utils/helper';
+import { getQuestionTypeLabel } from '../domain/questionType';
+import { loadCachedExplanation, generateExplanation } from '../services/aiService';
 import { upsertRecord } from '../repositories/recordRepo';
 import { isFavorited, toggleFavorite as toggleFavoriteRepo } from '../repositories/favoriteRepo';
-import { getCachedExplanation, cacheExplanation } from '../repositories/aiExplanationRepo';
 import Icon from './Icon';
 import ReactMarkdown from 'react-markdown';
 
@@ -191,7 +191,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
   const handleAIExplanation = async (forceRefresh = false) => {
     if (!forceRefresh) {
-      const cached = await getCachedExplanation(question.id);
+      const cached = await loadCachedExplanation(question.id);
       if (cached) {
         setAiExplanation(cached.explanation);
         setAiCacheId(cached.id ?? null);
@@ -200,11 +200,6 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       }
     }
 
-    const config = getAIConfig();
-    if (!config) {
-      setAiError('请先在设置中配置 AI 接口');
-      return;
-    }
     setShowExplanation(true);
     setAiLoading(true);
     setAiError('');
@@ -214,27 +209,14 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const typeLabel = { single: '单选', multiple: '多选', judge: '判断', blank: '填空', short: '简答' }[question.type];
-      const optionsText = question.options
-        ? Object.entries(question.options).map(([k, v]) => `${k}. ${v}`).join('\n')
-        : '';
-      const correctText = question.options
-        ? question.answer.map(a => `${a}. ${question.options![a]}`).join(', ')
-        : question.answer.join(', ');
-      const userText = userAnswer.length > 0
-        ? (question.options ? userAnswer.map(a => `${a}. ${question.options![a]}`).join(', ') : userAnswer.join(', '))
-        : '(未作答)';
-
-      let fullText = '';
-      for await (const chunk of streamExplanation(typeLabel, question.question, optionsText, correctText, userText, config, controller.signal)) {
-        fullText += chunk;
-        setAiExplanation(fullText);
-      }
-      // Cache the result
-      if (fullText) {
-        const newId = await cacheExplanation(question.id, fullText, aiCacheId);
-        setAiCacheId(newId);
-      }
+      const newId = await generateExplanation(
+        question,
+        userAnswer,
+        (text) => setAiExplanation(text),
+        aiCacheId,
+        controller.signal,
+      );
+      if (newId) setAiCacheId(newId);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setAiError(err instanceof Error ? err.message : 'AI 解析生成失败');
