@@ -6,6 +6,7 @@
 import type { Question } from '../types';
 import { getQuestionTypeLabel } from '../domain/questionType';
 import { getCachedExplanation, cacheExplanation } from '../repositories/aiExplanationRepo';
+import { getAIConfig as getAIConfigFromDB } from '../repositories/settingsRepo';
 
 const SYSTEM_PROMPT = `你是刷题 App 的题目解析助手，称呼用户为"同学"。请用简洁中文解释，重点帮助快速理解。
 
@@ -24,12 +25,21 @@ export interface AIConfig {
   model: string;
 }
 
-export function getAIConfig(): AIConfig | null {
-  const endpoint = localStorage.getItem('ai_endpoint');
-  const apiKey = localStorage.getItem('ai_apiKey');
-  const model = localStorage.getItem('ai_model');
-  if (!endpoint || !apiKey || !model) return null;
-  return { endpoint, apiKey, model };
+/**
+ * 从 IndexedDB 读取 AI 配置；若 IndexedDB 无数据则 fallback 读 localStorage（兼容旧版）
+ */
+export async function getAIConfig(): Promise<AIConfig | null> {
+  let config = await getAIConfigFromDB();
+  if (!config) {
+    // 兼容旧版 localStorage
+    const endpoint = localStorage.getItem('ai_endpoint');
+    const apiKey = localStorage.getItem('ai_apiKey');
+    const model = localStorage.getItem('ai_model');
+    if (endpoint && apiKey && model) {
+      config = { endpoint, apiKey, model };
+    }
+  }
+  return config;
 }
 
 /**
@@ -53,7 +63,7 @@ export async function generateExplanation(
   existingCacheId?: number | null,
   signal?: AbortSignal,
 ): Promise<number | null> {
-  const config = getAIConfig();
+  const config = await getAIConfig();
   if (!config) {
     throw new Error('请先在设置中配置 AI 接口');
   }
@@ -135,7 +145,7 @@ export async function generateExplanation(
 
   // 缓存结果
   if (fullText) {
-    return cacheExplanation(question.id, fullText, existingCacheId);
+    return cacheExplanation(question.id, fullText, existingCacheId, question.bankId, config.model);
   }
   return null;
 }

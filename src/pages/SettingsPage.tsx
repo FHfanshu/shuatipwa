@@ -4,12 +4,13 @@ import { exportAllAsZip } from '../services/exportService';
 import { downloadBlob } from '../utils/export';
 import { importFullBackup } from '../services/importService';
 import Icon from '../components/Icon';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/useTheme';
 import type { Theme, ColorPalette } from '../contexts/ThemeContext';
-import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/ThemeContext';
+import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/themeConstants';
 import { CURRENT_VERSION } from '../utils/version';
 import { forcePwaUpdate } from '../utils/pwaUpdate';
 import { AI_PROMPT } from '../utils/aiPrompt';
+import { getAIConfig, saveAIConfig } from '../repositories/settingsRepo';
 
 function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -112,9 +113,20 @@ export default function SettingsPage() {
 
   const { theme, actualTheme, palette, setTheme, setPalette } = useTheme();
 
-  const [aiEndpoint, setAiEndpoint] = useState(() => localStorage.getItem('ai_endpoint') || 'https://api.deepseek.com');
-  const [aiKey, setAiKey] = useState(() => localStorage.getItem('ai_apiKey') || '');
-  const [aiModel, setAiModel] = useState(() => localStorage.getItem('ai_model') || 'deepseek-chat');
+  // AI 配置从 IndexedDB 加载（异步），localStorage 作为 fallback
+  const [aiEndpoint, setAiEndpoint] = useState('https://api.deepseek.com');
+  const [aiKey, setAiKey] = useState('');
+  const [aiModel, setAiModel] = useState('deepseek-chat');
+
+  useEffect(() => {
+    getAIConfig().then(config => {
+      if (config) {
+        setAiEndpoint(config.endpoint);
+        setAiKey(config.apiKey);
+        setAiModel(config.model);
+      }
+    });
+  }, []);
 
   const aiConfigured = Boolean(aiEndpoint && aiKey && aiModel);
 
@@ -133,9 +145,9 @@ export default function SettingsPage() {
       downloadBlob(blob, `刷题助手备份_${date}.zip`);
       setExportProgress(null);
       showToast('success', '备份已下载');
-    } catch (e: any) {
+    } catch (e: unknown) {
       setExportProgress(null);
-      showToast('error', '导出失败: ' + e.message);
+      showToast('error', '导出失败: ' + (e instanceof Error ? e.message : '未知错误'));
     }
   };
 
@@ -150,14 +162,16 @@ export default function SettingsPage() {
       try {
         await importFullBackup(file);
         showToast('success', '数据恢复成功');
-      } catch (err: any) {
-        showToast('error', '恢复失败: ' + err.message);
+      } catch (err: unknown) {
+        showToast('error', '恢复失败: ' + (err instanceof Error ? err.message : '未知错误'));
       }
     };
     input.click();
   };
 
-  const saveAIConfig = () => {
+  const saveAI = async () => {
+    await saveAIConfig(aiEndpoint.trim(), aiKey.trim(), aiModel.trim());
+    // 同步写 localStorage 作为 fallback（兼容旧代码）
     localStorage.setItem('ai_endpoint', aiEndpoint.trim());
     localStorage.setItem('ai_apiKey', aiKey.trim());
     localStorage.setItem('ai_model', aiModel.trim());
@@ -171,8 +185,8 @@ export default function SettingsPage() {
     try {
       await clearAllData();
       showToast('success', '所有数据已清空');
-    } catch (e: any) {
-      showToast('error', '清空失败: ' + e.message);
+    } catch (e: unknown) {
+      showToast('error', '清空失败: ' + (e instanceof Error ? e.message : '未知错误'));
     }
   };
 
@@ -267,7 +281,7 @@ export default function SettingsPage() {
                   </div>
                 </form>
                 <button
-                  onClick={saveAIConfig}
+                  onClick={saveAI}
                   className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-semibold active:bg-accent-hover active:scale-[0.98] transition-all"
                 >
                   保存
