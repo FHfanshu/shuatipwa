@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { QuestionBank, Question, PracticeRecord, Favorite, AIExplanation, PracticeSessionRecord, AppSetting } from '../types';
+import { attachQuestionHashes } from '../domain/questionFingerprint';
 
 const db = new Dexie('ShuaTiDB') as Dexie & {
   banks: EntityTable<QuestionBank, 'id'>;
@@ -27,7 +28,13 @@ db.version(2).stores({
 db.version(3).stores({
   questions: 'id, bankId, type, contentHash, [bankId+contentHash]',
 }).upgrade(async tx => {
-  void tx;
+  // Backfill contentHash/answerHash for existing questions
+  const table = tx.table('questions');
+  const questions = await table.toArray();
+  const missing = questions.filter(q => !q.contentHash);
+  if (missing.length === 0) return;
+  const withHashes = await attachQuestionHashes(missing);
+  await table.bulkPut(withHashes);
 });
 
 db.version(4).stores({
@@ -35,8 +42,16 @@ db.version(4).stores({
   practiceSessions: 'id, bankId, mode, updatedAt',
   settings: 'key, updatedAt',
 }).upgrade(async tx => {
-  // Migrate existing aiExplanations: backfill bankId from questions
-  void tx;
+  // Backfill bankId for existing aiExplanations from questions table
+  const expTable = tx.table('aiExplanations');
+  const qTable = tx.table('questions');
+  const explanations = await expTable.toArray();
+  const missing = explanations.filter(e => !e.bankId);
+  if (missing.length === 0) return;
+  const questions = await qTable.toArray();
+  const qMap = new Map<string, string>(questions.map(q => [q.id, q.bankId]));
+  const updated = missing.map(e => ({ ...e, bankId: qMap.get(e.questionId) ?? '' }));
+  await expTable.bulkPut(updated);
 });
 
 export { db };
