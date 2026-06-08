@@ -33,7 +33,7 @@ function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <div className="px-4 pb-1.5 pt-4">
+      <div className="px-4 pb-2 pt-5">
         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{title}</span>
       </div>
       <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden divide-y divide-border-subtle">
@@ -56,9 +56,9 @@ function Row({
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
-      className={`w-full flex items-center gap-3 px-4 py-3 text-left ${onClick ? 'hover:bg-bg-secondary active:scale-[0.99] cursor-pointer' : ''} transition-all`}
+      className={`w-full flex items-center gap-3.5 px-5 py-4 text-left ${onClick ? 'hover:bg-bg-secondary active:scale-[0.99] cursor-pointer' : ''} transition-all`}
     >
-      <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
+      <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
         <Icon name={icon} size={16} className={iconColor} />
       </div>
       <div className="flex-1 min-w-0">
@@ -182,7 +182,7 @@ export default function SettingsPage() {
         <h1 className="font-display text-[2rem] font-semibold text-text-primary tracking-tight">设置</h1>
       </div>
 
-      <div className="px-5 pb-6 space-y-3">
+      <div className="px-5 pb-6 space-y-4">
         {/* Toast */}
         {toast && (
           <div
@@ -291,7 +291,7 @@ export default function SettingsPage() {
                   <button
                     key={t}
                     onClick={() => setTheme(t)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
                       theme === t
                         ? 'bg-accent text-white'
                         : 'bg-bg-secondary text-text-muted hover:opacity-80'
@@ -303,9 +303,9 @@ export default function SettingsPage() {
               </div>
             }
           />
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+          <div className="px-5 py-4">
+            <div className="flex items-center gap-3.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
                 <Icon name="star" size={16} className="text-accent" />
               </div>
               <div className="flex-1 min-w-0">
@@ -313,7 +313,7 @@ export default function SettingsPage() {
                 <div className="text-xs text-text-muted mt-0.5">选择你喜欢的主题色</div>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2.5">
               {(Object.keys(PALETTE_LABELS) as ColorPalette[]).map(p => {
                 const preview = PALETTE_PREVIEW[p];
                 const isActive = palette === p;
@@ -321,13 +321,13 @@ export default function SettingsPage() {
                   <button
                     key={p}
                     onClick={() => setPalette(p)}
-                    className={`relative flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all active:scale-[0.97] ${
+                    className={`relative flex flex-col items-center gap-2 rounded-xl border-2 p-3.5 transition-all active:scale-[0.97] ${
                       isActive
                         ? 'border-accent bg-accent/5 shadow-sm'
                         : 'border-border-subtle bg-bg-card hover:border-border-default'
                     }`}
                   >
-                    <div className="flex gap-1">
+                    <div className="flex gap-1.5">
                       <div className="w-4 h-4 rounded-full border border-black/10" style={{ backgroundColor: actualTheme === 'dark' ? preview.darkAccent : preview.accent }} />
                       <div className="w-4 h-4 rounded-full border border-black/10" style={{ backgroundColor: actualTheme === 'dark' ? preview.dark : preview.light }} />
                     </div>
@@ -403,13 +403,13 @@ export default function SettingsPage() {
 
         {/* 提示 */}
         <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden divide-y divide-border-subtle">
-          <div className="flex items-start gap-3 px-4 py-3">
+          <div className="flex items-start gap-3 px-5 py-4">
             <Icon name="smartphone" size={14} className="text-text-muted mt-0.5 shrink-0" />
-            <span className="text-xs text-text-secondary">添加到主屏幕后可像 App 一样使用，支持离线访问</span>
+            <span className="text-xs text-text-secondary leading-relaxed">添加到主屏幕后可像 App 一样使用，支持离线访问</span>
           </div>
-          <div className="flex items-start gap-3 px-4 py-3">
+          <div className="flex items-start gap-3 px-5 py-4">
             <Icon name="refresh-cw" size={14} className="text-text-muted mt-0.5 shrink-0" />
-            <span className="text-xs text-text-secondary">建议定期导出备份，防止数据丢失</span>
+            <span className="text-xs text-text-secondary leading-relaxed">建议定期导出备份，防止数据丢失</span>
           </div>
         </div>
 
