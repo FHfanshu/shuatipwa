@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Question, AnswerStatus } from '../types';
 import { checkAnswer, getQuestionTypeColor } from '../utils/helper';
 import { getQuestionTypeLabel } from '../domain/questionType';
@@ -34,16 +34,11 @@ interface Props {
 }
 
 export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, onStateChange, savedState, showAnswerImmediately = true, allowRedo }: Props) {
-  const [userAnswer, setUserAnswer] = useState<string[]>([]);
-  const [blankInput, setBlankInput] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-  const [status, setStatus] = useState<AnswerStatus>('unanswered');
   const [isFavorite, setIsFavorite] = useState(false);
   const [aiExplanation, setAiExplanation] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [showExplanation, setShowExplanation] = useState(false);
-  const [recordId, setRecordId] = useState<number | null>(null);
   const [aiCacheId, setAiCacheId] = useState<number | null>(null);
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRestoringRef = useRef(false);
@@ -53,40 +48,52 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
   const isSelfGrade = question.type === 'blank' || question.type === 'short';
 
-  useEffect(() => {
-    // Restore saved state if available
+  const init = useMemo(() => {
     if (savedState) {
+      return {
+        userAnswer: savedState.userAnswer,
+        blankInput: savedState.blankInput,
+        submitted: savedState.submitted,
+        status: savedState.status,
+        recordId: savedState.recordId ?? null,
+      };
+    }
+    return { userAnswer: [] as string[], blankInput: '', submitted: false, status: 'unanswered' as const, recordId: null };
+  }, [question.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [userAnswer, setUserAnswer] = useState(init.userAnswer);
+  const [blankInput, setBlankInput] = useState(init.blankInput);
+  const [submitted, setSubmitted] = useState(init.submitted);
+  const [status, setStatus] = useState(init.status);
+  const [recordId, setRecordId] = useState(init.recordId);
+
+  const prevQuestionIdRef = useRef(question.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (prevQuestionIdRef.current !== question.id) {
+      prevQuestionIdRef.current = question.id;
+      setUserAnswer(init.userAnswer);
+      setBlankInput(init.blankInput);
+      setSubmitted(init.submitted);
+      setStatus(init.status);
+      setRecordId(init.recordId);
       isRestoringRef.current = true;
-      setUserAnswer(savedState.userAnswer);
-      setBlankInput(savedState.blankInput);
-      setSubmitted(savedState.submitted);
-      setStatus(savedState.status);
-      setRecordId(savedState.recordId ?? null);
-      recordIdRef.current = savedState.recordId ?? null;
-      submittedAnswerRef.current = savedState.blankInput.trim()
-        ? [savedState.blankInput.trim()]
-        : savedState.userAnswer;
-    } else {
-      isRestoringRef.current = false;
-      setUserAnswer([]);
-      setBlankInput('');
-      setSubmitted(false);
-      setStatus('unanswered');
-      setRecordId(null);
-      recordIdRef.current = null;
-      submittedAnswerRef.current = [];
+      submittedAnswerRef.current = init.blankInput.trim()
+        ? [init.blankInput.trim()]
+        : init.userAnswer;
+      recordIdRef.current = init.recordId;
+      setAiExplanation('');
+      setAiLoading(false);
+      setAiError('');
+      setShowExplanation(false);
+      setAiCacheId(null);
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
+      }
+      abortRef.current?.abort();
     }
-    setAiExplanation('');
-    setAiLoading(false);
-    setAiError('');
-    setShowExplanation(false);
-    setAiCacheId(null);
-    if (autoAdvanceTimerRef.current) {
-      clearTimeout(autoAdvanceTimerRef.current);
-      autoAdvanceTimerRef.current = null;
-    }
-    abortRef.current?.abort();
-  }, [question.id]);
+  });
 
   // Auto-advance on correct answer (skip if restoring from saved state)
   useEffect(() => {
@@ -102,7 +109,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
         if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
       };
     }
-  }, [submitted, status, showAnswerImmediately, onAutoAdvance]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [submitted, status, showAnswerImmediately, onAutoAdvance]);
 
   // Notify parent of state changes
   useEffect(() => {
