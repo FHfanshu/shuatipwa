@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         includeAssets: ['favicon.svg'],
         manifest: {
           name: '刷题助手 - 本地离线刷题',
@@ -35,7 +35,8 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,woff2}'],
           navigateFallback: `${base}index.html`,
-          skipWaiting: true,
+          cleanupOutdatedCaches: true,
+          skipWaiting: false,
           clientsClaim: true,
           runtimeCaching: [
             {

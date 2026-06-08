@@ -1,12 +1,11 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
+import UpdatePrompt from './components/UpdatePrompt';
 import HomePage from './pages/HomePage';
 import ImportPage from './pages/ImportPage';
 import PracticePage from './pages/PracticePage';
 import WrongPage from './pages/WrongPage';
 import SettingsPage from './pages/SettingsPage';
-
-const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 function AppLayout() {
   const location = useLocation();
@@ -30,8 +29,9 @@ function AppLayout() {
 
 export default function App() {
   return (
-    <BrowserRouter basename={basename}>
+    <HashRouter>
       <AppLayout />
-    </BrowserRouter>
+      <UpdatePrompt />
+    </HashRouter>
   );
 }
