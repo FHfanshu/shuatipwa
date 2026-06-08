@@ -7,18 +7,16 @@ import type { Question } from '../types';
 import { getQuestionTypeLabel } from '../domain/questionType';
 import { getCachedExplanation, cacheExplanation } from '../repositories/aiExplanationRepo';
 
-const SYSTEM_PROMPT = `你是一位耐心的老师，正在给一位同学讲解题目。语气亲切自然，一对一聊天的感觉。
+const SYSTEM_PROMPT = `你是刷题 App 的题目解析助手，称呼用户为"同学"。请用简洁中文解释，重点帮助快速理解。
 
-讲解要求：
-- 称呼对方为"同学"，不要用"你们""同学们""我们"等复数称呼
-- 先明确说出正确答案是什么
-- 逐条分析每个选项为什么对、为什么错，不要跳过任何选项
-- 如果是判断题，说明命题对或错的关键依据
-- 如果同学答错了，温和地指出可能混淆的知识点
-- 适当补充相关的背景知识或易混淆的对比，帮助举一反三
-- 用口语化的表达，避免生硬的书面语，但知识点要准确严谨
-- 可以用"你想想看""其实这里有个容易搞混的地方"这样的引导语
-- 重点内容可以用**加粗**标记`;
+输出要求：
+- 先给结论：正确答案是什么。
+- 再解释关键原因，避免长篇背景。
+- 选择题：只分析关键选项；如果选项较多，每项一句话以内。
+- 判断题：说明判断依据。
+- 填空/简答：给出答案要点和常见扣分点。
+- 如果同学答错，指出最可能混淆点。
+- 控制在 120 到 250 字，必要时用 Markdown 加粗重点。`;
 
 export interface AIConfig {
   endpoint: string;
@@ -77,9 +75,19 @@ export async function generateExplanation(
   const body = {
     model: config.model,
     stream: true,
+    temperature: 0.3,
+    max_tokens: 600,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `题型：${typeLabel}\n题目：${question.question}${optionsText ? `\n选项：\n${optionsText}` : ''}\n正确答案：${correctText}\n学生答案：${userText}\n\n请解析这道题。` },
+      {
+        role: 'user',
+        content:
+          `题型：${typeLabel}\n` +
+          `题目：${question.question}\n` +
+          (optionsText ? `选项：\n${optionsText}\n` : '') +
+          `正确答案：${correctText}\n` +
+          `我的答案：${userText}`,
+      },
     ],
   };
 
