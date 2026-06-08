@@ -1,5 +1,5 @@
 import { db } from '../db';
-import type { QuestionBank, Question, PracticeRecord, Favorite } from '../types';
+import type { QuestionBank, Question, PracticeRecord, Favorite, AIExplanation, AppSetting } from '../types';
 
 export async function getAllBanks(): Promise<QuestionBank[]> {
   return db.banks.orderBy('updatedAt').reverse().toArray();
@@ -52,17 +52,22 @@ export async function replaceAllData(
   questions: Question[],
   records: PracticeRecord[],
   favorites: Favorite[],
+  aiExplanations: AIExplanation[] = [],
+  settings: AppSetting[] = [],
 ): Promise<void> {
-  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations], async () => {
+  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations, db.settings], async () => {
     await db.banks.clear();
     await db.questions.clear();
     await db.records.clear();
     await db.favorites.clear();
     await db.aiExplanations.clear();
+    await db.settings.clear();
 
     if (banks.length) await db.banks.bulkAdd(banks);
     if (questions.length) await db.questions.bulkAdd(questions);
     if (records.length) await db.records.bulkAdd(records);
     if (favorites.length) await db.favorites.bulkAdd(favorites);
+    if (aiExplanations.length) await db.aiExplanations.bulkAdd(aiExplanations);
+    if (settings.length) await db.settings.bulkAdd(settings);
   });
 }

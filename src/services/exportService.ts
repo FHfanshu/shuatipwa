@@ -1,9 +1,11 @@
-import type { ExportData } from '../types';
+import type { ExportDataV2 } from '../types';
 import { zipSync, strToU8 } from 'fflate';
 import { getAllBanks } from '../repositories/bankRepo';
 import { getAllQuestions, getQuestionsByBankId } from '../repositories/questionRepo';
 import { getAllRecords } from '../repositories/recordRepo';
 import { getAllFavorites } from '../repositories/favoriteRepo';
+import { getAllExplanations } from '../repositories/aiExplanationRepo';
+import { getAllSettings } from '../repositories/settingsRepo';
 
 export type ProgressCallback = (step: string, percent: number) => void;
 
@@ -15,6 +17,10 @@ export async function exportAllData(onProgress?: ProgressCallback): Promise<stri
   onProgress?.('读取记录...', 50);
   const records = await getAllRecords();
   const favorites = await getAllFavorites();
+  onProgress?.('读取 AI 解析...', 60);
+  const aiExplanations = await getAllExplanations();
+  onProgress?.('读取设置...', 65);
+  const settings = await getAllSettings();
 
   onProgress?.('整理数据...', 70);
   const questionsByBank: Record<string, typeof allQuestions> = {};
@@ -23,13 +29,15 @@ export async function exportAllData(onProgress?: ProgressCallback): Promise<stri
     questionsByBank[q.bankId].push(q);
   }
 
-  const data: ExportData = {
-    version: 1,
+  const data: ExportDataV2 = {
+    version: 2,
     exportedAt: Date.now(),
     banks,
     questions: questionsByBank,
     records,
     favorites,
+    aiExplanations: aiExplanations.length > 0 ? aiExplanations : undefined,
+    settings: settings.length > 0 ? settings : undefined,
   };
 
   return JSON.stringify(data);
