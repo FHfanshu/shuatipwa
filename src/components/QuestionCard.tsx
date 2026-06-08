@@ -116,11 +116,12 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     isFavorited(bankId, question.id).then(setIsFavorite);
   }, [bankId, question.id]);
 
-  // 自动滚动 AI 解析内容到底部，保持视线焦点
+  // AI 流式生成时自动滚到底部，保持视线焦点
   useEffect(() => {
     if (aiContentRef.current && aiExplanation) {
+      const el = aiContentRef.current;
       requestAnimationFrame(() => {
-        aiContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        el.scrollTop = el.scrollHeight;
       });
     }
   }, [aiExplanation]);
@@ -440,7 +441,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeExplanation}>
           <div className="absolute inset-0 bg-slate-950/55" />
           <div
-            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl max-h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
+            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl h-[60vh] flex flex-col animate-slide-up border-t border-border-subtle"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
@@ -466,7 +467,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeExplanation}>
           <div className="absolute inset-0 bg-slate-950/55" />
           <div
-            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl max-h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
+            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl h-[60vh] flex flex-col animate-slide-up border-t border-border-subtle"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
@@ -483,7 +484,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
                 </button>
               </div>
             </div>
-            <div ref={aiContentRef} className="flex-1 overflow-y-auto px-4 py-4 scroll-smooth">
+            <div ref={aiContentRef} className="flex-1 overflow-y-auto px-4 py-4">
               {aiLoading && !aiExplanation ? (
                 <div className="flex items-center justify-center gap-2 py-8 text-text-muted">
                   <span className="inline-block w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
