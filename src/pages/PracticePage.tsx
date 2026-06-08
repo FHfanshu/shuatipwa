@@ -8,6 +8,7 @@ import {
   loadSavedProgress,
   saveProgress,
   computeStats,
+  restoreFromRecords,
 } from '../services/practiceService';
 import { saveLastPracticeSession, loadLastPracticeSession } from '../services/practiceSessionStore';
 import { getQuestionsByIds } from '../repositories/questionRepo';
@@ -55,11 +56,20 @@ export default function PracticePage() {
           // getQuestionsByIds 不保证顺序，按保存的 questionIds 重排
           const idToQ = new Map(qs.map(q => [q.id, q]));
           const ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
-          const session = await loadPracticeSession(bankId, mode, { shuffle: false });
-          setQuestions(ordered.length > 0 ? ordered : session.questions);
-          setResults(session.results);
-          setQuestionStates(session.questionStates);
-          setCurrentIndex(Math.min(last.currentIndex, (ordered.length > 0 ? ordered : session.questions).length - 1));
+          if (ordered.length > 0) {
+            // 用 ordered 直接恢复记录，确保下标准确映射
+            const restored = await restoreFromRecords(bankId, mode, ordered);
+            setQuestions(ordered);
+            setResults(restored.results);
+            setQuestionStates(restored.questionStates);
+            setCurrentIndex(Math.min(last.currentIndex, ordered.length - 1));
+          } else {
+            const session = await loadPracticeSession(bankId, mode, { shuffle: false });
+            setQuestions(session.questions);
+            setResults(session.results);
+            setQuestionStates(session.questionStates);
+            setCurrentIndex(session.startIndex);
+          }
           setRestored(true);
           setLoading(false);
           lastSavedRef.current = '';
