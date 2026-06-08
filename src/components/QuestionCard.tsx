@@ -180,13 +180,20 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     setRecordId(null);
     recordIdRef.current = null;
     submittedAnswerRef.current = [];
-    setAiExplanation('');
-    setShowExplanation(false);
+    closeExplanation();
   };
 
   const toggleFavorite = async () => {
     const nowFav = await toggleFavoriteRepo(bankId, question.id);
     setIsFavorite(nowFav);
+  };
+
+  const closeExplanation = () => {
+    setShowExplanation(false);
+    setAiExplanation('');
+    setAiLoading(false);
+    setAiError('');
+    abortRef.current?.abort();
   };
 
   const handleAIExplanation = async (forceRefresh = false) => {
@@ -420,7 +427,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
       {/* 解析悬浮窗 */}
       {showExplanation && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowExplanation(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeExplanation}>
           <div className="absolute inset-0 bg-slate-950/55" />
           <div
             className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl max-h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
@@ -431,7 +438,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
                 <Icon name="lightbulb" size={18} className="text-accent" />
                 解析
               </h3>
-              <button onClick={() => setShowExplanation(false)} className="p-1 active:bg-bg-secondary rounded-lg">
+              <button onClick={closeExplanation} className="p-1 active:bg-bg-secondary rounded-lg">
                 <Icon name="x" size={20} className="text-text-muted" />
               </button>
             </div>
@@ -446,7 +453,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
       {/* AI 解析悬浮窗 */}
       {(aiExplanation || aiLoading || aiError) && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => { setAiExplanation(''); setAiError(''); }}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeExplanation}>
           <div className="absolute inset-0 bg-slate-950/55" />
           <div
             className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl max-h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
@@ -461,7 +468,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
                 <button onClick={() => handleAIExplanation(true)} className="p-1.5 active:bg-bg-secondary rounded-lg" title="重新生成">
                   <Icon name="refresh-cw" size={16} className="text-text-muted" />
                 </button>
-                <button onClick={() => { setAiExplanation(''); setAiError(''); }} className="p-1.5 active:bg-bg-secondary rounded-lg">
+                <button onClick={closeExplanation} className="p-1.5 active:bg-bg-secondary rounded-lg">
                   <Icon name="x" size={20} className="text-text-muted" />
                 </button>
               </div>
