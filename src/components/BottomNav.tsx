@@ -2,7 +2,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from './Icon';
 
 const navItems = [
-  { path: '/', icon: 'book', label: '题库' },
+  { path: '/', icon: 'home', label: '首页' },
+  { path: '/banks', icon: 'book', label: '题库' },
   { path: '/import', icon: 'import', label: '导入' },
   { path: '/settings', icon: 'settings', label: '设置' },
 ];
@@ -13,7 +14,7 @@ export default function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-surface-glass/95 backdrop-blur-2xl border-t border-border-subtle">
-      <div className="max-w-3xl mx-auto grid grid-cols-3">
+      <div className="max-w-3xl mx-auto grid grid-cols-4">
         {navItems.map(item => {
           const isActive = location.pathname === item.path;
           return (
