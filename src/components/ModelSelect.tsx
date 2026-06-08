@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import Icon from './Icon';
 
 interface ModelSelectProps {
@@ -10,117 +10,106 @@ interface ModelSelectProps {
 
 export default function ModelSelect({ models, value, onChange, loading }: ModelSelectProps) {
   const [open, setOpen] = useState(false);
-  const [customMode, setCustomMode] = useState(false);
-  const [customInput, setCustomInput] = useState(value);
+  const [query, setQuery] = useState(value);
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 外部 value 变化时同步输入框
+  useEffect(() => { setQuery(value); }, [value]);
 
   // 点击外部关闭
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery(value);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [open, value]);
 
-  // 如果 value 不在列表里，自动进自定义模式
-  useEffect(() => {
-    if (models.length > 0 && !models.includes(value) && !customMode) {
-      setCustomMode(true);
-      setCustomInput(value);
-    }
-  }, [models, value, customMode]);
+  // 过滤列表
+  const filtered = useMemo(() => {
+    if (!open) return models;
+    const q = query.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter(m => m.toLowerCase().includes(q));
+  }, [models, query, open]);
 
   const handleSelect = (model: string) => {
     onChange(model);
+    setQuery(model);
     setOpen(false);
-    setCustomMode(false);
   };
 
-  const handleCustomSubmit = () => {
-    const trimmed = customInput.trim();
-    if (trimmed) {
-      onChange(trimmed);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered.length === 1 && filtered[0] !== query) {
+        handleSelect(filtered[0]);
+      } else {
+        const trimmed = query.trim();
+        if (trimmed) {
+          onChange(trimmed);
+          setOpen(false);
+        }
+      }
+    } else if (e.key === 'Escape') {
       setOpen(false);
+      setQuery(value);
+      inputRef.current?.blur();
     }
   };
 
   return (
     <div ref={ref} className="relative">
-      {/* 触发按钮 */}
-      <button
-        type="button"
-        onClick={() => { setOpen(v => !v); setCustomInput(value); }}
-        className="w-full flex items-center justify-between border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
-      >
-        <span className={customMode ? 'text-text-secondary' : ''}>
-          {customMode ? value || '自定义模型...' : value}
-        </span>
-        <Icon name="chevron-down" size={14} className={`text-text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
+      {/* 输入框 */}
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={loading ? '获取模型中...' : '输入或选择模型...'}
+          disabled={loading}
+          className="w-full border border-border-default rounded-lg px-3 py-2 pr-8 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all disabled:opacity-50"
+        />
+        <Icon
+          name="chevron-down"
+          size={14}
+          className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted transition-transform duration-200 pointer-events-none ${open ? 'rotate-180' : ''}`}
+        />
+      </div>
 
       {loading && (
         <p className="text-[11px] text-text-muted mt-1">正在获取模型列表...</p>
       )}
 
       {/* 下拉面板 */}
-      {open && (
+      {open && filtered.length > 0 && (
         <div className="absolute z-50 mt-1.5 w-full rounded-xl border border-border-subtle bg-bg-card shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="max-h-52 overflow-y-auto overscroll-contain p-1">
-            {models.map(m => (
+            {filtered.map(m => (
               <button
                 key={m}
                 type="button"
-                onClick={() => handleSelect(m)}
+                onMouseDown={e => { e.preventDefault(); handleSelect(m); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                  m === value && !customMode
+                  m === value
                     ? 'bg-accent/10 text-accent font-medium'
                     : 'text-text-primary hover:bg-bg-secondary'
                 }`}
               >
                 <span className="flex-1 truncate">{m}</span>
-                {m === value && !customMode && (
+                {m === value && (
                   <Icon name="check" size={14} className="text-accent shrink-0" />
                 )}
               </button>
             ))}
-          </div>
-
-          {/* 分割线 */}
-          <div className="h-px bg-border-subtle mx-2" />
-
-          {/* 自定义输入 */}
-          <div className="p-2">
-            {customMode ? (
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={customInput}
-                  onChange={e => setCustomInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleCustomSubmit(); }}
-                  placeholder="输入模型名称..."
-                  autoFocus
-                  className="flex-1 border border-border-default rounded-lg px-2.5 py-1.5 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:border-accent outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleCustomSubmit}
-                  className="px-2.5 py-1.5 text-xs font-medium text-accent bg-accent/10 rounded-lg hover:bg-accent/15 active:scale-[0.97] transition-all"
-                >
-                  确定
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setCustomMode(true)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-text-muted hover:bg-bg-secondary transition-colors"
-              >
-                <Icon name="pencil" size={13} />
-                <span>自定义输入</span>
-              </button>
-            )}
           </div>
         </div>
       )}
