@@ -24,6 +24,8 @@ export interface QuestionBank {
   createdAt: number;
   updatedAt: number;
   questionCount: number;
+  sourceFileName?: string;
+  sourceFileExt?: string;
 }
 
 // ============ 做题记录 ============

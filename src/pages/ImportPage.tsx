@@ -47,7 +47,7 @@ function classifyError(msg: string): ImportError {
 export default function ImportPage() {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ name: string; count: number; skipped: number; conflicts: number } | null>(null);
+  const [result, setResult] = useState<{ name: string; count: number; skipped: number; conflicts: number; updated?: boolean; removed?: number } | null>(null);
   const [importError, setImportError] = useState<ImportError | null>(null);
   const [bankName, setBankName] = useState('');
   const [copied, setCopied] = useState(false);
@@ -74,8 +74,8 @@ export default function ImportPage() {
     setResult(null);
     setLoading(true);
     try {
-      const { bank, count, skipped, conflicts } = await importFromFile(file, bankName || undefined);
-      setResult({ name: bank.name, count, skipped, conflicts });
+      const { bank, count, skipped, conflicts, updated, removed } = await importFromFile(file, bankName || undefined);
+      setResult({ name: bank.name, count, skipped, conflicts, updated, removed });
       setBankName('');
     } catch (e: unknown) {
       setImportError(classifyError(e instanceof Error ? e.message : '导入失败'));
@@ -152,8 +152,15 @@ export default function ImportPage() {
           <div className="flex items-center gap-2">
             <Icon name="check-circle" size={22} className="text-emerald-500" />
             <div>
-              <div className="font-medium text-text-primary">导入成功</div>
-              <div className="text-sm text-text-secondary">「{result.name}」共 {result.count} 题</div>
+              <div className="font-medium text-text-primary">
+                {result.updated ? '已更新题库' : '导入成功'}
+              </div>
+              <div className="text-sm text-text-secondary">
+                「{result.name}」{result.updated ? `更新 ${result.count} 题` : `共 ${result.count} 题`}
+              </div>
+              {result.updated && result.removed != null && result.removed > 0 && (
+                <div className="text-xs text-text-muted mt-1">删除旧题 {result.removed} 题，答题记录已保留</div>
+              )}
               {result.skipped > 0 && (
                 <div className="text-xs text-text-muted mt-1">跳过重复 {result.skipped} 题</div>
               )}

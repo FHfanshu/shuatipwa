@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Question, QuestionBank, QuestionType } from '../types';
 import { parseTextToQuestions, inferQuestionType } from '../domain/questionParser';
 import { attachQuestionHashes } from '../domain/questionFingerprint';
-import { createBankWithQuestions, replaceAllData } from '../repositories/bankRepo';
+import { createBankWithQuestions, replaceAllData, findBankBySourceFile, updateBankQuestions } from '../repositories/bankRepo';
 import { db } from '../db';
 
 // ============ JSON 导入 ============
@@ -307,6 +307,8 @@ export interface ImportResult {
   count: number;
   skipped: number;
   conflicts: number;
+  updated?: boolean;
+  removed?: number;
 }
 
 export async function importFromFile(
@@ -370,32 +372,39 @@ export async function importFromFile(
     throw new Error(`不支持的文件格式: ${ext}。请使用 JSON、CSV、Excel、Word 或文本文件。`);
   }
 
+  // 判断是否支持同源覆盖更新
+  const isReimportable = ext === 'docx' || ext === 'txt' || ext === 'md';
+  const sourceFileName = isReimportable ? fileName : undefined;
+  const sourceFileExt = isReimportable ? ext : undefined;
+
+  // 检查是否已有同源题库
+  const existingBank = sourceFileName ? await findBankBySourceFile(sourceFileName) : undefined;
+
   if (rawQuestions.length === 0) {
     throw new Error('未能从文件中解析出任何题目');
   }
 
-  // 创建题库
-  const bankId = uuidv4();
-  const now = Date.now();
-
-  // 标准化题目
+  // 标准化题目（bankId 用已有或新建）
+  const bankId = existingBank?.id ?? uuidv4();
   let questions = rawQuestions.map(raw => normalizeQuestion(raw, bankId));
 
   // 计算 hash
   questions = await attachQuestionHashes(questions);
 
-  // 去重：批次内去重 + 跨题库检测
+  // 去重：批次内去重
   const seen = new Map<string, { q: Question; index: number }>();
   let skipped = 0;
   let conflicts = 0;
   const unique: Question[] = [];
 
-  // 查询已有题目的 contentHash（用于跨题库检测）
-  const existingContentHashes = new Set(
-    (await db.questions.toArray())
-      .filter(q => q.contentHash)
-      .map(q => q.contentHash!)
-  );
+  // 同源覆盖更新时不做跨题库去重（否则会跳过已有题导致更新为空）
+  const existingContentHashes = new Set<string>();
+  if (!existingBank) {
+    const all = await db.questions.toArray();
+    for (const q of all) {
+      if (q.contentHash) existingContentHashes.add(q.contentHash);
+    }
+  }
 
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
@@ -414,15 +423,13 @@ export async function importFromFile(
       continue;
     }
 
-    // 跨题库：contentHash 完全匹配且 answerHash 也匹配 → 跳过
+    // 跨题库（仅新题库）：contentHash 完全匹配且 answerHash 也匹配 → 跳过
     if (existingContentHashes.has(key)) {
-      // 需要精确比对 answerHash
       const existing = await db.questions.where('contentHash').equals(key).first();
       if (existing && existing.answerHash === q.answerHash) {
         skipped++;
         continue;
       }
-      // contentHash 相同但 answerHash 不同 → 冲突，仍导入
       conflicts++;
     }
 
@@ -430,19 +437,32 @@ export async function importFromFile(
     unique.push(q);
   }
 
-  // 创建题库
-  const bank: QuestionBank = {
-    id: bankId,
-    name: bankName || '导入题库',
-    createdAt: now,
-    updatedAt: now,
-    questionCount: unique.length,
-  };
-
-  // 写入数据库（单事务）
-  await createBankWithQuestions(bank, unique);
-
-  return { bank, count: unique.length, skipped, conflicts };
+  if (existingBank) {
+    // 同源覆盖更新
+    const result = await updateBankQuestions(existingBank.id, unique);
+    return {
+      bank: existingBank,
+      count: unique.length,
+      skipped,
+      conflicts,
+      updated: true,
+      removed: result.removed,
+    };
+  } else {
+    // 新建题库
+    const now = Date.now();
+    const bank: QuestionBank = {
+      id: bankId,
+      name: bankName || '导入题库',
+      createdAt: now,
+      updatedAt: now,
+      questionCount: unique.length,
+      sourceFileName,
+      sourceFileExt,
+    };
+    await createBankWithQuestions(bank, unique);
+    return { bank, count: unique.length, skipped, conflicts };
+  }
 }
 
 // ============ 从 ZIP/JSON 恢复全部数据 ============

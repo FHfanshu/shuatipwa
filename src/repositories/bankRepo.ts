@@ -25,6 +25,64 @@ export async function createBank(bank: QuestionBank): Promise<void> {
   await db.banks.add(bank);
 }
 
+/**
+ * 按来源文件名查找已有题库
+ */
+export async function findBankBySourceFile(sourceFileName: string): Promise<QuestionBank | undefined> {
+  return db.banks.where('sourceFileName').equals(sourceFileName).first();
+}
+
+/**
+ * 同源覆盖更新：按 contentHash 匹配旧题，更新/新增/删除，保留答题记录
+ */
+export async function updateBankQuestions(
+  bankId: string,
+  newQuestions: Question[],
+): Promise<{ added: number; updated: number; removed: number }> {
+  const oldQuestions = await db.questions.where('bankId').equals(bankId).toArray();
+  const oldByHash = new Map(oldQuestions.map(q => [q.contentHash, q]));
+  const newByHash = new Set(newQuestions.map(q => q.contentHash));
+
+  const toAdd: Question[] = [];
+  const toUpdate: Question[] = [];
+  const removedIds: string[] = [];
+
+  for (const nq of newQuestions) {
+    const old = oldByHash.get(nq.contentHash);
+    if (old) {
+      // contentHash 命中：复用旧 id，更新字段
+      toUpdate.push({ ...nq, id: old.id });
+    } else {
+      toAdd.push(nq);
+    }
+  }
+
+  for (const oq of oldQuestions) {
+    if (!newByHash.has(oq.contentHash)) {
+      removedIds.push(oq.id);
+    }
+  }
+
+  await db.transaction('rw', [db.questions, db.records, db.favorites, db.aiExplanations], async () => {
+    if (toUpdate.length) await db.questions.bulkPut(toUpdate);
+    if (toAdd.length) await db.questions.bulkAdd(toAdd);
+    if (removedIds.length) {
+      await db.questions.where('id').anyOf(removedIds).delete();
+      await db.records.where('questionId').anyOf(removedIds).delete();
+      await db.favorites.where('questionId').anyOf(removedIds).delete();
+      await db.aiExplanations.where('questionId').anyOf(removedIds).delete();
+    }
+  });
+
+  // 更新题库元信息
+  await db.banks.update(bankId, {
+    questionCount: oldQuestions.length - removedIds.length + toAdd.length,
+    updatedAt: Date.now(),
+  });
+
+  return { added: toAdd.length, updated: toUpdate.length, removed: removedIds.length };
+}
+
 export async function clearAllData(): Promise<void> {
   await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations, db.practiceSessions, db.settings], async () => {
     await db.banks.clear();

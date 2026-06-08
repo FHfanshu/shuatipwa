@@ -54,4 +54,10 @@ db.version(4).stores({
   await expTable.bulkPut(updated);
 });
 
+db.version(5).stores({
+  banks: 'id, name, createdAt, updatedAt, sourceFileName',
+}).upgrade(async tx => {
+  void tx;
+});
+
 export { db };
