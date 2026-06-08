@@ -26,6 +26,23 @@ export interface AIConfig {
 }
 
 /**
+ * 从 /v1/models 拉取可用模型列表
+ */
+export async function fetchModels(endpoint: string, apiKey: string): Promise<string[]> {
+  try {
+    const url = endpoint.replace(/\/$/, '') + '/v1/models';
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.data?.map((m: { id: string }) => m.id).filter(Boolean) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * 从 IndexedDB 读取 AI 配置；若 IndexedDB 无数据则 fallback 读 localStorage（兼容旧版）
  */
 export async function getAIConfig(): Promise<AIConfig | null> {
