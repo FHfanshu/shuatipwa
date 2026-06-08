@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export const CURRENT_VERSION = '0.1.0';
+export const CURRENT_VERSION = '0.2.0';
 const GITHUB_REPO = 'FHfanshu/shuatipwa';
 const CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour
 
