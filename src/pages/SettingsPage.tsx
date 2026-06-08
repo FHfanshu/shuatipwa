@@ -8,10 +8,10 @@ import { useTheme } from '../contexts/useTheme';
 import type { Theme, ColorPalette } from '../contexts/ThemeContext';
 import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/themeConstants';
 import { CURRENT_VERSION } from '../utils/version';
-import { forcePwaUpdate } from '../utils/pwaUpdate';
 import { AI_PROMPT } from '../utils/aiPrompt';
 import { getAIConfig, saveAIConfig } from '../repositories/settingsRepo';
 import { fetchModels } from '../services/aiService';
+import ModelSelect from '../components/ModelSelect';
 
 function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -132,7 +132,6 @@ export default function SettingsPage() {
   // 模型列表：endpoint+key 有效时自动拉取
   const [modelList, setModelList] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [customModel, setCustomModel] = useState(false);
 
   useEffect(() => {
     if (!aiEndpoint || !aiKey) { setModelList([]); return; }
@@ -141,10 +140,6 @@ export default function SettingsPage() {
       fetchModels(aiEndpoint, aiKey).then(list => {
         setModelList(list);
         setModelsLoading(false);
-        // 如果当前 model 不在列表里且列表非空，切到自定义模式
-        if (list.length > 0 && !list.includes(aiModel)) {
-          setCustomModel(true);
-        }
       });
     }, 500);
     return () => clearTimeout(timer);
@@ -293,48 +288,12 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-medium text-text-secondary block mb-1">模型名称</label>
-                    {modelList.length > 0 && !customModel ? (
-                      <div className="flex gap-2">
-                        <select
-                          value={aiModel}
-                          onChange={e => setAiModel(e.target.value)}
-                          className="flex-1 border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
-                        >
-                          {modelList.map(m => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => setCustomModel(true)}
-                          className="px-3 py-2 text-xs text-text-muted border border-border-default rounded-lg hover:bg-bg-secondary active:scale-[0.97] transition-all"
-                        >
-                          自定义
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={aiModel}
-                          onChange={e => setAiModel(e.target.value)}
-                          placeholder="gpt-4o-mini"
-                          className="flex-1 border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
-                        />
-                        {modelList.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setCustomModel(false)}
-                            className="px-3 py-2 text-xs text-text-muted border border-border-default rounded-lg hover:bg-bg-secondary active:scale-[0.97] transition-all"
-                          >
-                            列表
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {modelsLoading && (
-                      <p className="text-[11px] text-text-muted mt-1">正在获取模型列表...</p>
-                    )}
+                    <ModelSelect
+                      models={modelList}
+                      value={aiModel}
+                      onChange={setAiModel}
+                      loading={modelsLoading}
+                    />
                   </div>
                 </form>
                 <button
@@ -492,7 +451,7 @@ export default function SettingsPage() {
           <div className="flex items-center justify-center gap-2">
             <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
             <button
-              onClick={() => void forcePwaUpdate()}
+              onClick={() => window.location.reload()}
               className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-text-muted active:bg-bg-secondary"
               title="检查并刷新应用"
             >
