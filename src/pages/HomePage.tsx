@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../db';
-import type { QuestionBank, PracticeRecord } from '../types';
+import type { QuestionBank, PracticeRecord, PracticeMode } from '../types';
 import Icon from '../components/Icon';
 import ThemeToggle from '../components/ThemeToggle';
 import { loadLastPracticeSession, MODE_LABELS } from '../services/practiceSessionStore';
@@ -42,6 +42,7 @@ export default function HomePage() {
   const banks = useLiveQuery(() => db.banks.orderBy('updatedAt').reverse().toArray());
   const records = useLiveQuery(() => db.records.toArray());
   const navigate = useNavigate();
+  const [mountTime] = useState(() => Date.now());
 
   const homeStats = useMemo(() => {
     const totalQuestions = banks?.reduce((sum, bank) => sum + bank.questionCount, 0) ?? 0;
@@ -52,7 +53,7 @@ export default function HomePage() {
 
     const timestamps = records?.map(r => r.timestamp).filter(Boolean) as number[] | undefined;
     const daysSinceStart = timestamps && timestamps.length > 0
-      ? Math.max(1, Math.ceil((Date.now() - Math.min(...timestamps)) / 86400000))
+      ? Math.max(1, Math.ceil((mountTime - Math.min(...timestamps)) / 86400000))
       : 0;
 
     const dailyAccuracy = records ? computeDailyAccuracy(records) : [];
@@ -66,7 +67,7 @@ export default function HomePage() {
       completionPct: totalQuestions > 0 ? Math.round((answered / totalQuestions) * 100) : 0,
       dailyAccuracy,
     };
-  }, [banks, records]);
+  }, [banks, records, mountTime]);
 
   if (!banks) {
     return (
@@ -285,18 +286,27 @@ function ContinueCard({
   banks: QuestionBank[];
   navigate: (path: string) => void;
 }) {
-  const info = useMemo(() => {
-    const last = loadLastPracticeSession();
-    if (!last) return null;
-    const bank = banks.find(b => b.id === last.bankId);
-    if (!bank) return null;
-    return {
-      bankName: bank.name,
-      bankId: last.bankId,
-      mode: last.mode,
-      currentIndex: last.currentIndex,
-      modeLabel: MODE_LABELS[last.mode],
-    };
+  const [info, setInfo] = useState<{
+    bankName: string;
+    bankId: string;
+    mode: PracticeMode;
+    currentIndex: number;
+    modeLabel: string;
+  } | null>(null);
+
+  useEffect(() => {
+    loadLastPracticeSession().then(last => {
+      if (!last) { setInfo(null); return; }
+      const bank = banks.find(b => b.id === last.bankId);
+      if (!bank) { setInfo(null); return; }
+      setInfo({
+        bankName: bank.name,
+        bankId: last.bankId,
+        mode: last.mode,
+        currentIndex: last.currentIndex,
+        modeLabel: MODE_LABELS[last.mode],
+      });
+    });
   }, [banks]);
 
   if (!info) return null;

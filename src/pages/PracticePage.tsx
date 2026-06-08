@@ -49,7 +49,7 @@ export default function PracticePage() {
 
       // resume=1：恢复上次会话的题目顺序
       if (resume) {
-        const last = loadLastPracticeSession();
+        const last = await loadLastPracticeSession();
         if (last && last.bankId === bankId && last.mode === mode && last.questionIds.length > 0) {
           const qs = await getQuestionsByIds(last.questionIds);
           // getQuestionsByIds 不保证顺序，按保存的 questionIds 重排
@@ -95,7 +95,7 @@ export default function PracticePage() {
   // 保存 last practice session（非考试模式）
   useEffect(() => {
     if (!bankId || !mode || mode === 'exam' || questions.length === 0 || !restored) return;
-    saveLastPracticeSession({
+    void saveLastPracticeSession({
       bankId,
       mode,
       currentIndex,

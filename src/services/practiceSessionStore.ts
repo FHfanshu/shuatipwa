@@ -1,29 +1,23 @@
+import { db } from '../db';
 import type { PracticeMode } from '../types';
 
-export interface LastPracticeSession {
+export type PracticeSessionRecord = {
+  id?: string;
   bankId: string;
   mode: PracticeMode;
   currentIndex: number;
   questionIds: string[];
   updatedAt: number;
-}
+};
 
-const KEY = 'last-practice-session-v1';
-
-export function saveLastPracticeSession(session: LastPracticeSession): void {
+export async function saveLastPracticeSession(session: Omit<PracticeSessionRecord, 'id'>): Promise<void> {
   if (session.mode === 'exam') return;
-  localStorage.setItem(KEY, JSON.stringify(session));
+  await db.practiceSessions.put({ ...session, id: 'last' });
 }
 
-export function loadLastPracticeSession(): LastPracticeSession | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as LastPracticeSession;
-  } catch {
-    localStorage.removeItem(KEY);
-    return null;
-  }
+export async function loadLastPracticeSession(): Promise<PracticeSessionRecord | null> {
+  const record = await db.practiceSessions.get('last');
+  return record ?? null;
 }
 
 export const MODE_LABELS: Record<PracticeMode, string> = {
