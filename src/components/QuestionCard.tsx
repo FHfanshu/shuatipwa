@@ -50,7 +50,6 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const abortRef = useRef<AbortController | null>(null);
   const recordIdRef = useRef<number | null>(null);
   const submittedAnswerRef = useRef<string[]>([]);
-  const aiContentRef = useRef<HTMLDivElement>(null);
 
   const isSelfGrade = question.type === 'blank' || question.type === 'short';
 
@@ -115,16 +114,6 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   useEffect(() => {
     isFavorited(bankId, question.id).then(setIsFavorite);
   }, [bankId, question.id]);
-
-  // AI 流式生成时自动滚到底部，保持视线焦点
-  useEffect(() => {
-    if (aiContentRef.current && aiExplanation) {
-      const el = aiContentRef.current;
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight;
-      });
-    }
-  }, [aiExplanation]);
 
   async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number) {
     const nextId = await upsertRecord(
@@ -484,7 +473,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
                 </button>
               </div>
             </div>
-            <div ref={aiContentRef} className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="flex-1 overflow-y-auto px-4 py-4">
               {aiLoading && !aiExplanation ? (
                 <div className="flex items-center justify-center gap-2 py-8 text-text-muted">
                   <span className="inline-block w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
