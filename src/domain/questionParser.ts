@@ -190,10 +190,10 @@ function parseAnswer(raw: string): string[] {
 // ============ 清理题干 ============
 
 function cleanQuestion(text: string): string {
-  // 去掉末尾空括号
-  text = text.replace(/[（(]\s*[）)]\s*[。.]?\s*$/, '');
-  // 去掉中间空括号
-  text = text.replace(/[（(]\s*[）)]/, '');
+  // 空括号规范化为填空占位 ____，而非删除
+  text = text.replace(/[（(]\s*[）)]/g, '____');
+  // 连续下划线规范化
+  text = text.replace(/_{3,}/g, '____');
   // 去掉末尾残留半括号
   text = text.replace(/[（(]\s*$/, '');
   // 去掉末尾标点
