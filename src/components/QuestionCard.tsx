@@ -297,9 +297,6 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               >
                 <span className="font-bold text-sm mt-0.5 shrink-0">{key}</span>
                 <span className="text-sm leading-relaxed">{value}</span>
-                {submitted && showAnswerImmediately && isCorrect && selected && <Icon name="check" size={16} className="ml-auto text-emerald-500" />}
-                {submitted && showAnswerImmediately && isCorrect && !selected && <Icon name="circle" size={16} className="ml-auto text-emerald-500/50" />}
-                {submitted && showAnswerImmediately && selected && !isCorrect && <Icon name="x" size={16} className="ml-auto text-red-500" />}
               </button>
             );
           })}
