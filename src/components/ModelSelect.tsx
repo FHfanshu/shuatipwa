@@ -71,7 +71,7 @@ export default function ModelSelect({ models, value, onChange, loading }: ModelS
           ref={inputRef}
           type="text"
           value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onChange={e => { const v = e.target.value; setQuery(v); onChange(v); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={loading ? '获取模型中...' : '输入或选择模型...'}

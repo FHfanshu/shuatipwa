@@ -30,7 +30,8 @@ export interface AIConfig {
  */
 export async function fetchModels(endpoint: string, apiKey: string): Promise<string[]> {
   try {
-    const url = endpoint.replace(/\/$/, '') + '/v1/models';
+    const base = endpoint.replace(/\/$/, '');
+    const url = `${base}/v1/models`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
@@ -97,7 +98,7 @@ export async function generateExplanation(
     : '(未作答)';
 
   let fullText = '';
-  const url = config.endpoint.replace(/\/$/, '') + '/chat/completions';
+  const url = `${config.endpoint.replace(/\/$/, '')}/v1/chat/completions`;
 
   const body = {
     model: config.model,

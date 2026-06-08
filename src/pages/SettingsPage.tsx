@@ -134,7 +134,7 @@ export default function SettingsPage() {
   const [modelsLoading, setModelsLoading] = useState(false);
 
   useEffect(() => {
-    if (!aiEndpoint || !aiKey) { setModelList([]); return; }
+    if (!aiEndpoint || !aiKey) { setModelList([]); setModelsLoading(false); return; }
     setModelsLoading(true);
     const timer = setTimeout(() => {
       fetchModels(aiEndpoint, aiKey).then(list => {
@@ -271,7 +271,7 @@ export default function SettingsPage() {
                       type="text"
                       value={aiEndpoint}
                       onChange={e => setAiEndpoint(e.target.value)}
-                      placeholder="https://api.openai.com/v1"
+                      placeholder="https://api.deepseek.com"
                       className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
                     />
                   </div>
