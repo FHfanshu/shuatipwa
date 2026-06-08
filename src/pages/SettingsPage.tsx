@@ -286,7 +286,9 @@ export default function SettingsPage() {
                 >
                   保存
                 </button>
-                <p className="text-xs text-text-muted text-center">支持 OpenAI 兼容协议接口</p>
+                <p className="text-xs text-text-muted text-center">
+                  支持 OpenAI 兼容协议接口，推荐 <a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer" className="text-accent underline underline-offset-2">DeepSeek</a>
+                </p>
               </div>
             </Collapse>
           </div>
