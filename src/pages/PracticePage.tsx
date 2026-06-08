@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import type { PracticeMode, AnswerStatus } from '../types';
+import type { PracticeMode, QuestionType, AnswerStatus } from '../types';
 import type { QuestionState } from '../services/practiceService';
 import {
   loadPracticeSession,
@@ -22,6 +22,7 @@ export default function PracticePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resume = searchParams.get('resume') === '1';
+  const typeFilter = (searchParams.get('type') as QuestionType | null) ?? undefined;
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -42,7 +43,7 @@ export default function PracticePage() {
       setLoading(true);
 
       if (mode === 'exam' && !examStarted) {
-        const qs = await loadQuestions(bankId, mode);
+        const qs = await loadQuestions(bankId, mode, { typeFilter });
         setQuestions(qs);
         setLoading(false);
         return;
@@ -64,7 +65,7 @@ export default function PracticePage() {
             setQuestionStates(restored.questionStates);
             setCurrentIndex(Math.min(last.currentIndex, ordered.length - 1));
           } else {
-            const session = await loadPracticeSession(bankId, mode, { shuffle: false });
+            const session = await loadPracticeSession(bankId, mode, { shuffle: false, typeFilter });
             setQuestions(session.questions);
             setResults(session.results);
             setQuestionStates(session.questionStates);
@@ -79,6 +80,7 @@ export default function PracticePage() {
 
       const session = await loadPracticeSession(bankId, mode, {
         examCount: mode === 'exam' ? examCount : undefined,
+        typeFilter,
       });
 
       setQuestions(session.questions);
@@ -100,7 +102,7 @@ export default function PracticePage() {
     };
 
     load();
-  }, [bankId, mode, examStarted, examCount, resume]);
+  }, [bankId, mode, examStarted, examCount, resume, typeFilter]);
 
   // 保存 last practice session（非考试模式）
   useEffect(() => {
@@ -149,6 +151,8 @@ export default function PracticePage() {
   };
 
   const stats = computeStats(results, questions.length);
+  const TYPE_LABELS: Record<string, string> = { single: '单选', multiple: '多选', judge: '判断', blank: '填空', short: '简答' };
+  const typeLabel = typeFilter ? TYPE_LABELS[typeFilter] : '';
   const modeLabel = mode === 'exam' ? '考试中' : mode === 'wrong' ? '错题本' : mode === 'favorite' ? '收藏' : '练习';
   const modeIcon = mode === 'exam' ? 'exam' : mode === 'wrong' ? 'x-circle' : mode === 'favorite' ? 'star' : 'book';
 
@@ -286,7 +290,7 @@ export default function PracticePage() {
           <Icon name="arrow-left" size={16} /> 返回
         </button>
         <div className="text-sm font-medium text-text-secondary flex items-center gap-1">
-          <Icon name={modeIcon} size={16} /> {modeLabel}
+          <Icon name={modeIcon} size={16} /> {modeLabel}{typeLabel ? ` · ${typeLabel}` : ''}
         </div>
         <div className="text-sm text-text-secondary">
           {stats.answered}/{questions.length}

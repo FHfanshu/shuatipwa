@@ -1,4 +1,4 @@
-import type { Question, PracticeMode, AnswerStatus, PracticeRecord } from '../types';
+import type { Question, QuestionType, PracticeMode, AnswerStatus, PracticeRecord } from '../types';
 import { getCurrentWrongQuestionIds } from '../domain/wrongQuestion';
 import { shuffleArray } from '../utils/helper';
 import { getRecordsByBankId } from '../repositories/recordRepo';
@@ -39,7 +39,7 @@ interface SavedProgress {
 export async function loadPracticeSession(
   bankId: string,
   mode: PracticeMode,
-  options?: { examCount?: number; shuffle?: boolean }
+  options?: { examCount?: number; shuffle?: boolean; typeFilter?: QuestionType }
 ): Promise<PracticeSession> {
   const questions = await loadQuestions(bankId, mode, options);
 
@@ -57,7 +57,7 @@ export async function loadPracticeSession(
 export async function loadQuestions(
   bankId: string,
   mode: PracticeMode,
-  options?: { examCount?: number; shuffle?: boolean }
+  options?: { examCount?: number; shuffle?: boolean; typeFilter?: QuestionType }
 ): Promise<Question[]> {
   let qs: Question[];
 
@@ -70,6 +70,11 @@ export async function loadQuestions(
     qs = favIds.length > 0 ? await getQuestionsByIds(favIds) : [];
   } else {
     qs = await getQuestionsByBankId(bankId);
+  }
+
+  // 题型过滤
+  if (options?.typeFilter) {
+    qs = qs.filter(q => q.type === options.typeFilter);
   }
 
   if (options?.shuffle ?? (mode === 'random' || mode === 'exam')) {

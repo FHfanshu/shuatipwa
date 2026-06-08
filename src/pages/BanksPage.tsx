@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../db';
 import { renameBank, deleteBankCascade } from '../repositories/bankRepo';
-import type { QuestionBank, PracticeMode, PracticeRecord } from '../types';
+import type { QuestionBank, QuestionType, PracticeMode, PracticeRecord } from '../types';
 import Icon from '../components/Icon';
 
 const modes: { mode: PracticeMode; icon: string; label: string; desc: string }[] = [
@@ -20,9 +20,19 @@ type ToastState = { type: 'success' | 'error'; text: string } | null;
 export default function BanksPage() {
   const banks = useLiveQuery(() => db.banks.orderBy('updatedAt').reverse().toArray());
   const records = useLiveQuery(() => db.records.toArray());
+  const allQuestions = useLiveQuery(() => db.questions.toArray());
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [showModeModal, setShowModeModal] = useState<string | null>(null);
+  const bankTypeCounts = useMemo(() => {
+    if (!allQuestions) return {} as Record<string, Record<string, number>>;
+    const map: Record<string, Record<string, number>> = {};
+    for (const q of allQuestions) {
+      if (!map[q.bankId]) map[q.bankId] = {};
+      map[q.bankId][q.type] = (map[q.bankId][q.type] || 0) + 1;
+    }
+    return map;
+  }, [allQuestions]);
   const [renameTarget, setRenameTarget] = useState<QuestionBank | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameError, setRenameError] = useState('');
@@ -50,9 +60,10 @@ export default function BanksPage() {
     );
   }
 
-  const startPractice = (bankId: string, mode: PracticeMode) => {
+  const startPractice = (bankId: string, mode: PracticeMode, typeFilter?: QuestionType) => {
     setShowModeModal(null);
-    navigate(`/practice/${bankId}/${mode}`);
+    const qs = typeFilter ? `?type=${typeFilter}` : '';
+    navigate(`/practice/${bankId}/${mode}${qs}`);
   };
 
   const openRename = (bank: QuestionBank) => {
@@ -162,6 +173,7 @@ export default function BanksPage() {
               <BankCard
                 bank={bank}
                 records={records}
+                typeCounts={bankTypeCounts[bank.id]}
                 onStart={() => setShowModeModal(bank.id)}
                 onRename={() => openRename(bank)}
                 onDelete={async () => {
@@ -178,8 +190,9 @@ export default function BanksPage() {
 
       {showModeModal && (
         <ModeSheet
+          bankId={showModeModal}
           onClose={() => setShowModeModal(null)}
-          onSelect={mode => startPractice(showModeModal, mode)}
+          onSelect={(mode, typeFilter) => startPractice(showModeModal, mode, typeFilter)}
         />
       )}
 
@@ -205,12 +218,14 @@ export default function BanksPage() {
 function BankCard({
   bank,
   records,
+  typeCounts,
   onStart,
   onRename,
   onDelete,
 }: {
   bank: QuestionBank;
   records?: PracticeRecord[];
+  typeCounts?: Record<string, number>;
   onStart: () => void;
   onRename: () => void;
   onDelete: () => void;
@@ -278,6 +293,18 @@ function BankCard({
           <span>{updatedAt}</span>
           <span className="text-border-default">·</span>
           <span>{bank.questionCount} 题</span>
+          {typeCounts && Object.keys(typeCounts).length > 1 && (
+            <>
+              <span className="text-border-default">·</span>
+              <span>
+                {typeCounts.single ? `${typeCounts.single}单选` : ''}
+                {typeCounts.multiple ? ` ${typeCounts.multiple}多选` : ''}
+                {typeCounts.judge ? ` ${typeCounts.judge}判断` : ''}
+                {typeCounts.blank ? ` ${typeCounts.blank}填空` : ''}
+                {typeCounts.short ? ` ${typeCounts.short}简答` : ''}
+              </span>
+            </>
+          )}
           {stats.uniqueAnswered > 0 && (
             <>
               <span className="text-border-default">·</span>
@@ -352,7 +379,41 @@ function EmptyState({ onImport }: { onImport: () => void }) {
 }
 
 /* ── Mode Sheet ── */
-function ModeSheet({ onClose, onSelect }: { onClose: () => void; onSelect: (mode: PracticeMode) => void }) {
+const TYPE_OPTIONS: { type: QuestionType | ''; icon: string; label: string }[] = [
+  { type: '', icon: 'list', label: '全部题型' },
+  { type: 'single', icon: 'check-circle', label: '单选题' },
+  { type: 'multiple', icon: 'check-circle', label: '多选题' },
+  { type: 'judge', icon: 'check', label: '判断题' },
+  { type: 'blank', icon: 'file-text', label: '填空题' },
+  { type: 'short', icon: 'file-text', label: '简答题' },
+];
+
+function ModeSheet({ bankId, onClose, onSelect }: {
+  bankId: string;
+  onClose: () => void;
+  onSelect: (mode: PracticeMode, typeFilter?: QuestionType) => void;
+}) {
+  const [selectedType, setSelectedType] = useState<QuestionType | ''>('');
+  const questions = useLiveQuery(() => db.questions.where('bankId').equals(bankId).toArray(), [bankId]);
+
+  const typeCounts = useMemo(() => {
+    if (!questions) return {} as Record<QuestionType, number>;
+    const counts: Record<string, number> = {};
+    for (const q of questions) {
+      counts[q.type] = (counts[q.type] || 0) + 1;
+    }
+    return counts;
+  }, [questions]);
+
+  const filteredModes = selectedType
+    ? modes.filter(m => {
+        // wrong/favorite 模式始终可用（它们先按记录筛选再按 type 过滤）
+        if (m.mode === 'wrong' || m.mode === 'favorite') return true;
+        // 考试模式也支持
+        return true;
+      })
+    : modes;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
@@ -360,26 +421,57 @@ function ModeSheet({ onClose, onSelect }: { onClose: () => void; onSelect: (mode
         onClick={e => e.stopPropagation()}
       >
         <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-border-default" />
-        <h3 className="font-display text-xl font-semibold text-text-primary">选择练习模式</h3>
-        <div className="mt-4 space-y-1">
-          {modes.map((mode, i) => (
-            <button
-              key={mode.mode}
-              onClick={() => onSelect(mode.mode)}
-              className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left transition-all hover:bg-copper-glow active:scale-[0.98]"
-              style={{ animationDelay: `${i * 0.04}s` }}
-            >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper">
-                <Icon name={mode.icon} size={18} />
-              </div>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-text-primary">{mode.label}</span>
-                <span className="block text-xs text-text-muted">{mode.desc}</span>
-              </span>
-              <Icon name="chevron-right" size={16} className="text-text-muted" />
-            </button>
-          ))}
+        <h3 className="font-display text-xl font-semibold text-text-primary">选择练习</h3>
+
+        {/* 题型选择 */}
+        <div className="mt-4">
+          <p className="text-xs font-medium text-text-muted mb-2">题型</p>
+          <div className="flex flex-wrap gap-2">
+            {TYPE_OPTIONS.map(opt => {
+              const count = opt.type ? (typeCounts[opt.type] || 0) : (questions?.length ?? 0);
+              if (opt.type && count === 0) return null;
+              return (
+                <button
+                  key={opt.type || 'all'}
+                  onClick={() => setSelectedType(opt.type)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    selectedType === opt.type
+                      ? 'bg-accent text-white'
+                      : 'bg-bg-secondary text-text-secondary hover:bg-bg-card'
+                  }`}
+                >
+                  {opt.label}
+                  <span className="ml-1 opacity-60">{count}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {/* 模式选择 */}
+        <div className="mt-5">
+          <p className="text-xs font-medium text-text-muted mb-2">模式</p>
+          <div className="space-y-1">
+            {filteredModes.map((mode, i) => (
+              <button
+                key={mode.mode}
+                onClick={() => onSelect(mode.mode, selectedType || undefined)}
+                className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left transition-all hover:bg-copper-glow active:scale-[0.98]"
+                style={{ animationDelay: `${i * 0.04}s` }}
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper">
+                  <Icon name={mode.icon} size={18} />
+                </div>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-text-primary">{mode.label}</span>
+                  <span className="block text-xs text-text-muted">{mode.desc}</span>
+                </span>
+                <Icon name="chevron-right" size={16} className="text-text-muted" />
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={onClose}
           className="mt-4 w-full py-2.5 text-sm font-medium text-text-muted transition-colors hover:text-text-secondary"
