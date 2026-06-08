@@ -8,6 +8,7 @@ import { useTheme } from '../contexts/useTheme';
 import type { Theme, ColorPalette } from '../contexts/ThemeContext';
 import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/themeConstants';
 import { CURRENT_VERSION } from '../utils/version';
+import { BUILD_INFO, formatBuildTime } from '../utils/buildInfo';
 import { AI_PROMPT } from '../utils/aiPrompt';
 import { getAIConfig, saveAIConfig } from '../repositories/settingsRepo';
 import { fetchModels } from '../services/aiService';
@@ -447,17 +448,27 @@ export default function SettingsPage() {
         </div>
 
         {/* 版本 */}
-        <div className="text-center pt-4 pb-2">
+        <div className="text-center pt-4 pb-2 space-y-1.5">
           <div className="flex items-center justify-center gap-2">
-            <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
+            <span className="text-xs text-text-muted font-mono">
+              v{CURRENT_VERSION} · {BUILD_INFO.commitShort}
+            </span>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                showToast('success', '正在检查更新...');
+                window.setTimeout(() => {
+                  window.location.reload();
+                }, 350);
+              }}
               className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-text-muted active:bg-bg-secondary"
               title="检查并刷新应用"
             >
               <Icon name="refresh-cw" size={13} />
-              刷新
+              检查更新
             </button>
+          </div>
+          <div className="text-[11px] text-text-muted/70">
+            提交：{formatBuildTime(BUILD_INFO.commitTime)} · 构建：{formatBuildTime(BUILD_INFO.buildTime)}
           </div>
         </div>
       </div>
