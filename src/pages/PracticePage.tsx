@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../db';
-import type { Question, PracticeMode, AnswerStatus } from '../types';
-import { getCurrentWrongQuestionIds, shuffleArray } from '../utils/helper';
+import type { PracticeMode, AnswerStatus } from '../types';
+import type { QuestionState } from '../services/practiceService';
+import {
+  loadPracticeSession,
+  loadQuestions,
+  loadSavedProgress,
+  saveProgress,
+  computeStats,
+} from '../services/practiceService';
 import QuestionCard from '../components/QuestionCard';
 import QuestionOverview from '../components/QuestionOverview';
 import Icon from '../components/Icon';
-
-interface SavedProgress {
-  currentIndex: number;
-  results: Record<number, AnswerStatus>;
-}
+import type { Question } from '../types';
 
 export default function PracticePage() {
   const { bankId, mode } = useParams<{ bankId: string; mode: PracticeMode }>();
@@ -23,149 +25,55 @@ export default function PracticePage() {
   const [examStarted, setExamStarted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showOverview, setShowOverview] = useState(false);
-  const [savedProgress, setSavedProgress] = useState<SavedProgress | null>(null);
   const [restored, setRestored] = useState(false);
-  const [questionStates, setQuestionStates] = useState<Map<number, {
-    userAnswer: string[];
-    blankInput: string;
-    submitted: boolean;
-    status: AnswerStatus;
-    recordId?: number | null;
-  }>>(new Map());
+  const [questionStates, setQuestionStates] = useState<Map<number, QuestionState>>(new Map());
   const lastSavedRef = useRef<string>('');
 
+  // 加载题目 + 恢复进度
   useEffect(() => {
     if (!bankId || !mode) return;
 
-    const loadQuestions = async () => {
+    const load = async () => {
       setLoading(true);
-      let qs: Question[];
-
-      if (mode === 'wrong') {
-        const records = await db.records.where('bankId').equals(bankId).toArray();
-        const wrongIds = getCurrentWrongQuestionIds(records);
-        qs = wrongIds.length > 0
-          ? await db.questions.where('id').anyOf(wrongIds).toArray()
-          : [];
-      } else if (mode === 'favorite') {
-        const favs = await db.favorites.where('bankId').equals(bankId).toArray();
-        const favIds = favs.map(f => f.questionId);
-        qs = await db.questions.where('id').anyOf(favIds).toArray();
-      } else {
-        qs = await db.questions.where('bankId').equals(bankId).toArray();
-      }
-
-      if (mode === 'random' || mode === 'exam') {
-        qs = shuffleArray(qs);
-      }
 
       if (mode === 'exam' && !examStarted) {
+        const qs = await loadQuestions(bankId, mode);
         setQuestions(qs);
         setLoading(false);
         return;
       }
 
-      if (mode === 'exam') {
-        qs = qs.slice(0, examCount);
-      }
+      const session = await loadPracticeSession(bankId, mode, {
+        examCount: mode === 'exam' ? examCount : undefined,
+      });
 
-      setQuestions(qs);
+      setQuestions(session.questions);
+      setResults(session.results);
+      setQuestionStates(session.questionStates);
+      setCurrentIndex(session.startIndex);
+      setRestored(true);
       setLoading(false);
-      setCurrentIndex(0);
-      setResults({});
-      setRestored(false);
       lastSavedRef.current = '';
 
-      // Load previous records from IndexedDB to restore results and question states
-      if (mode !== 'exam') {
-        const allRecords = await db.records.where('bankId').equals(bankId!).toArray();
-        const questionIdToIndex = new Map<string, number>();
-        qs.forEach((q, i) => questionIdToIndex.set(q.id, i));
-
-        // Find latest record per question
-        const latestRecords = new Map<string, typeof allRecords[0]>();
-        for (const r of allRecords) {
-          const existing = latestRecords.get(r.questionId);
-          if (!existing || r.timestamp > existing.timestamp) {
-            latestRecords.set(r.questionId, r);
-          }
-        }
-
-        const restoredResults: Record<number, AnswerStatus> = {};
-        const restoredStates = new Map<number, {
-          userAnswer: string[];
-          blankInput: string;
-          submitted: boolean;
-          status: AnswerStatus;
-          recordId?: number | null;
-        }>();
-
-        for (const [questionId, record] of latestRecords) {
-          const idx = questionIdToIndex.get(questionId);
-          if (idx === undefined) continue;
-          restoredResults[idx] = record.status;
-          restoredStates.set(idx, {
-            userAnswer: record.userAnswer || [],
-            blankInput: '',
-            submitted: true,
-            status: record.status,
-            recordId: record.id,
-          });
-        }
-
-        if (Object.keys(restoredResults).length > 0) {
-          setResults(restoredResults);
-          setQuestionStates(restoredStates);
-
-          // Sequential mode: jump to first unanswered question
-          if (mode === 'sequential') {
-            const firstUnanswered = qs.findIndex((_, i) => !restoredResults[i]);
-            setCurrentIndex(firstUnanswered >= 0 ? firstUnanswered : qs.length - 1);
-            // Clear stale localStorage progress since we now restore from IndexedDB
-            localStorage.removeItem(`practice-progress-${bankId}-${mode}`);
-            setRestored(true);
-          }
-        }
-      }
-
-      // Check for saved progress in sequential mode
-      if (mode === 'sequential') {
-        const saved = localStorage.getItem(`practice-progress-${bankId}-${mode}`);
-        if (saved) {
-          try {
-            const progress: SavedProgress = JSON.parse(saved);
-            if (progress.currentIndex < qs.length) {
-              setSavedProgress(progress);
-            }
-          } catch {
-            localStorage.removeItem(`practice-progress-${bankId}-${mode}`);
-          }
+      // 顺序模式兜底：尝试从 localStorage 恢复（IndexedDB 优先，但 localStorage 可能更近）
+      if (mode === 'sequential' && Object.keys(session.results).length === 0) {
+        const saved = loadSavedProgress(bankId, mode);
+        if (saved && saved.currentIndex < session.questions.length) {
+          setCurrentIndex(saved.currentIndex);
+          setResults(saved.results);
         }
       }
     };
 
-    loadQuestions();
+    load();
   }, [bankId, mode, examStarted, examCount]);
 
-  // Restore saved progress after questions are loaded
-  useEffect(() => {
-    if (savedProgress && questions.length > 0 && !restored) {
-      setCurrentIndex(savedProgress.currentIndex);
-      setResults(savedProgress.results);
-      setSavedProgress(null);
-      setRestored(true);
-    } else if (questions.length > 0 && !savedProgress && !restored) {
-      setRestored(true);
-    }
-  }, [savedProgress, questions.length, restored]);
-
-  // Save progress for sequential modes (only after restoration is complete)
+  // 保存进度到 localStorage（顺序模式）
   useEffect(() => {
     if (mode === 'sequential' && questions.length > 0 && bankId && restored) {
       const stateString = JSON.stringify({ currentIndex, results });
       if (stateString !== lastSavedRef.current) {
-        const progress: SavedProgress = { currentIndex, results };
-        localStorage.setItem(`practice-progress-${bankId}-${mode}`, JSON.stringify(progress));
+        saveProgress(bankId, mode, currentIndex, results);
         lastSavedRef.current = stateString;
       }
     }
@@ -175,13 +83,7 @@ export default function PracticePage() {
     setResults(prev => ({ ...prev, [index]: status }));
   }, []);
 
-  const handleSaveQuestionState = useCallback((index: number, state: {
-    userAnswer: string[];
-    blankInput: string;
-    submitted: boolean;
-    status: AnswerStatus;
-    recordId?: number | null;
-  }) => {
+  const handleSaveQuestionState = useCallback((index: number, state: QuestionState) => {
     setQuestionStates(prev => {
       const next = new Map(prev);
       next.set(index, state);
@@ -196,19 +98,15 @@ export default function PracticePage() {
   const goNext = () => {
     if (currentIndex < questions.length - 1) setCurrentIndex(prev => prev + 1);
   };
-
   const goPrev = () => {
     if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
   };
 
-  const answered = Object.keys(results).length;
-  const correct = Object.values(results).filter(r => r === 'correct').length;
-  const wrong = Object.values(results).filter(r => r === 'wrong').length;
-
+  const stats = computeStats(results, questions.length);
   const modeLabel = mode === 'exam' ? '考试中' : mode === 'wrong' ? '错题本' : mode === 'favorite' ? '收藏' : '练习';
   const modeIcon = mode === 'exam' ? 'exam' : mode === 'wrong' ? 'x-circle' : mode === 'favorite' ? 'star' : 'book';
 
-  // 考试模式选择题量
+  // 考试模式：选择题量
   if (mode === 'exam' && !examStarted) {
     const maxCount = questions.length;
     const examOptions = Array.from(new Set(
@@ -286,19 +184,17 @@ export default function PracticePage() {
   }
 
   // 考试结束页
-  const isExamFinished = mode === 'exam' && answered >= questions.length;
-  if (isExamFinished) {
-    const accuracy = Math.round((correct / questions.length) * 100);
+  if (mode === 'exam' && stats.isFinished) {
     return (
       <div className="px-4 pt-4 pb-8">
         <div className="flex flex-col items-center justify-center h-[70vh]">
           <Icon
             name="trophy"
             size={64}
-            className={accuracy >= 90 ? 'text-accent mb-4' : accuracy >= 60 ? 'text-accent mb-4' : 'text-text-muted mb-4'}
+            className={stats.accuracy >= 90 ? 'text-accent mb-4' : stats.accuracy >= 60 ? 'text-accent mb-4' : 'text-text-muted mb-4'}
           />
           <h2 className="text-2xl font-bold text-text-primary mb-2">考试结束！</h2>
-          <div className="text-5xl font-bold text-accent my-4">{accuracy}分</div>
+          <div className="text-5xl font-bold text-accent my-4">{stats.accuracy}分</div>
 
           <div className="grid grid-cols-3 gap-4 w-full max-w-xs mt-4">
             <div className="text-center bg-bg-secondary rounded-xl p-3">
@@ -306,11 +202,11 @@ export default function PracticePage() {
               <div className="text-xs text-text-secondary">总题数</div>
             </div>
             <div className="text-center bg-emerald-500/10 rounded-xl p-3">
-              <div className="text-xl font-bold text-emerald-500">{correct}</div>
+              <div className="text-xl font-bold text-emerald-500">{stats.correct}</div>
               <div className="text-xs text-emerald-500">正确</div>
             </div>
             <div className="text-center bg-red-500/10 rounded-xl p-3">
-              <div className="text-xl font-bold text-red-500">{wrong}</div>
+              <div className="text-xl font-bold text-red-500">{stats.wrong}</div>
               <div className="text-xs text-red-500">错误</div>
             </div>
           </div>
@@ -347,7 +243,7 @@ export default function PracticePage() {
           <Icon name={modeIcon} size={16} /> {modeLabel}
         </div>
         <div className="text-sm text-text-secondary">
-          {answered}/{questions.length}
+          {stats.answered}/{questions.length}
         </div>
       </div>
 
@@ -371,6 +267,7 @@ export default function PracticePage() {
           onStateChange={state => handleSaveQuestionState(currentIndex, state)}
           savedState={questionStates.get(currentIndex)}
           showAnswerImmediately={mode !== 'exam'}
+          allowRedo={mode === 'wrong'}
         />
       </div>
 
@@ -384,7 +281,6 @@ export default function PracticePage() {
           <Icon name="arrow-left" size={14} /> 上一题
         </button>
 
-        {/* 进度指示器 */}
         <div className="flex-1 flex flex-col items-center justify-center px-2">
           <div className="text-sm font-medium text-text-secondary mb-1">
             {currentIndex + 1} / {questions.length}
