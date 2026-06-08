@@ -142,7 +142,7 @@ export default function SettingsPage() {
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('ai_model') || 'deepseek-chat');
 
   const aiConfigured = Boolean(aiEndpoint && aiKey && aiModel);
-  const { hasUpdate, latestVersion, applyUpdate } = useVersionCheck();
+  const { hasUpdate, latestVersion } = useVersionCheck();
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
@@ -213,7 +213,7 @@ export default function SettingsPage() {
         {/* Toast */}
         {toast && (
           <div
-            className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full shadow-lg text-sm font-medium flex items-center gap-2 animate-fade-in ${
+            className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 animate-slide-in-right ${
               toast.type === 'success'
                 ? 'bg-accent text-white'
                 : 'bg-red-500 text-white'
@@ -444,9 +444,10 @@ export default function SettingsPage() {
           {hasUpdate ? (
             <button
               onClick={() => {
-                showToast('success', '正在更新，即将跳转...');
+                sessionStorage.setItem('pendingToast', JSON.stringify({
+                  type: 'success', text: `正在更新到 v${latestVersion}...`, action: 'reload'
+                }));
                 navigate('/');
-                setTimeout(() => applyUpdate(), 300);
               }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/10 text-accent border border-accent/25 text-sm font-medium active:scale-[0.98] transition-all"
             >
@@ -461,9 +462,10 @@ export default function SettingsPage() {
               <span className="text-xs text-text-muted">v{CURRENT_VERSION}</span>
               <button
                 onClick={() => {
-                  showToast('success', '正在刷新...');
+                  sessionStorage.setItem('pendingToast', JSON.stringify({
+                    type: 'success', text: '正在刷新...', action: 'reload'
+                  }));
                   navigate('/');
-                  setTimeout(() => window.location.reload(), 300);
                 }}
                 className="p-1 active:bg-bg-secondary rounded-md"
                 title="刷新页面"

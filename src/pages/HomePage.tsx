@@ -29,6 +29,20 @@ export default function HomePage() {
   const [renameSaving, setRenameSaving] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
+  // 处理从 SettingsPage 传递过来的 toast（跳转 + 刷新）
+  useEffect(() => {
+    const pending = sessionStorage.getItem('pendingToast');
+    if (!pending) return;
+    sessionStorage.removeItem('pendingToast');
+    try {
+      const { type, text, action } = JSON.parse(pending) as { type: string; text: string; action?: string };
+      setToast({ type: type as 'success' | 'error', text });
+      if (action === 'reload') {
+        setTimeout(() => window.location.reload(), 1500);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   const homeStats = useMemo(() => {
     const totalQuestions = banks?.reduce((sum, bank) => sum + bank.questionCount, 0) ?? 0;
     const correct = records?.filter(record => record.status === 'correct').length ?? 0;
@@ -582,7 +596,7 @@ function Toast({ toast }: { toast: ToastState }) {
   if (!toast) return null;
   return (
     <div
-      className={`fixed left-1/2 top-4 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-white shadow-lg animate-fade-in ${
+      className={`fixed top-4 right-4 z-[60] flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg animate-slide-in-right ${
         toast.type === 'success' ? 'bg-copper' : 'bg-red-500'
       }`}
     >
