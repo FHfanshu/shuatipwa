@@ -11,6 +11,8 @@ export interface Question {
   answer: string[];                 // ["B"] or ["A","C"] or ["true"] or ["blank1","blank2"]
   explanation?: string;
   tags?: string[];
+  contentHash?: string;
+  answerHash?: string;
 }
 
 // ============ 题库 ============
@@ -55,6 +57,41 @@ export interface ExportData {
   questions: Record<string, Question[]>; // bankId -> questions
   records: PracticeRecord[];
   favorites: Favorite[];
+}
+
+export interface AIExplanation {
+  id?: number;
+  bankId: string;
+  questionId: string;
+  explanation: string;
+  model?: string;
+  createdAt: number;
+}
+
+export interface PracticeSessionRecord {
+  id: string; // 'last' 或 '${bankId}:${mode}'
+  bankId: string;
+  mode: PracticeMode;
+  currentIndex: number;
+  questionIds: string[];
+  updatedAt: number;
+}
+
+export interface AppSetting {
+  key: string;
+  value: unknown;
+  updatedAt: number;
+}
+
+export interface ExportDataV2 {
+  version: 2;
+  exportedAt: number;
+  banks: QuestionBank[];
+  questions: Record<string, Question[]>;
+  records: PracticeRecord[];
+  favorites: Favorite[];
+  aiExplanations?: AIExplanation[];
+  settings?: AppSetting[];
 }
 
 // ============ 练习模式 ============

@@ -47,7 +47,7 @@ function classifyError(msg: string): ImportError {
 export default function ImportPage() {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ name: string; count: number } | null>(null);
+  const [result, setResult] = useState<{ name: string; count: number; skipped: number; conflicts: number } | null>(null);
   const [importError, setImportError] = useState<ImportError | null>(null);
   const [bankName, setBankName] = useState('');
   const [copied, setCopied] = useState(false);
@@ -74,11 +74,11 @@ export default function ImportPage() {
     setResult(null);
     setLoading(true);
     try {
-      const { bank, count } = await importFromFile(file, bankName || undefined);
-      setResult({ name: bank.name, count });
+      const { bank, count, skipped, conflicts } = await importFromFile(file, bankName || undefined);
+      setResult({ name: bank.name, count, skipped, conflicts });
       setBankName('');
-    } catch (e: any) {
-      setImportError(classifyError(e.message || '导入失败'));
+    } catch (e: unknown) {
+      setImportError(classifyError(e instanceof Error ? e.message : '导入失败'));
     } finally {
       setLoading(false);
     }
@@ -154,6 +154,12 @@ export default function ImportPage() {
             <div>
               <div className="font-medium text-text-primary">导入成功</div>
               <div className="text-sm text-text-secondary">「{result.name}」共 {result.count} 题</div>
+              {result.skipped > 0 && (
+                <div className="text-xs text-text-muted mt-1">跳过重复 {result.skipped} 题</div>
+              )}
+              {result.conflicts > 0 && (
+                <div className="text-xs text-amber-600 mt-0.5">答案冲突 {result.conflicts} 题（已导入）</div>
+              )}
             </div>
           </div>
           <div className="mt-3 flex gap-2">

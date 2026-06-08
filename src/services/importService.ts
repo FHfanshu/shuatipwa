@@ -3,7 +3,9 @@ import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
 import type { Question, QuestionBank, QuestionType } from '../types';
 import { parseTextToQuestions, inferQuestionType } from '../domain/questionParser';
+import { attachQuestionHashes } from '../domain/questionFingerprint';
 import { createBankWithQuestions, replaceAllData } from '../repositories/bankRepo';
+import { db } from '../db';
 
 // ============ JSON 导入 ============
 
@@ -300,10 +302,17 @@ function parseExcel(buffer: ArrayBuffer): RawQuestion[] {
 
 // ============ 主导入函数 ============
 
+export interface ImportResult {
+  bank: QuestionBank;
+  count: number;
+  skipped: number;
+  conflicts: number;
+}
+
 export async function importFromFile(
   file: File,
   bankName?: string
-): Promise<{ bank: QuestionBank; count: number }> {
+): Promise<ImportResult> {
   const fileName = file.name;
   const ext = fileName.split('.').pop()?.toLowerCase();
 
@@ -368,21 +377,72 @@ export async function importFromFile(
   // 创建题库
   const bankId = uuidv4();
   const now = Date.now();
+
+  // 标准化题目
+  let questions = rawQuestions.map(raw => normalizeQuestion(raw, bankId));
+
+  // 计算 hash
+  questions = await attachQuestionHashes(questions);
+
+  // 去重：批次内去重 + 跨题库检测
+  const seen = new Map<string, { q: Question; index: number }>();
+  let skipped = 0;
+  let conflicts = 0;
+  const unique: Question[] = [];
+
+  // 查询已有题目的 contentHash（用于跨题库检测）
+  const existingContentHashes = new Set(
+    (await db.questions.toArray())
+      .filter(q => q.contentHash)
+      .map(q => q.contentHash!)
+  );
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const key = q.contentHash!;
+
+    // 批次内：contentHash + answerHash 都相同 → 跳过
+    const batchEntry = seen.get(key);
+    if (batchEntry) {
+      if (batchEntry.q.answerHash === q.answerHash) {
+        skipped++;
+        continue;
+      }
+      // contentHash 相同但 answerHash 不同 → 冲突，仍导入
+      conflicts++;
+      unique.push(q);
+      continue;
+    }
+
+    // 跨题库：contentHash 完全匹配且 answerHash 也匹配 → 跳过
+    if (existingContentHashes.has(key)) {
+      // 需要精确比对 answerHash
+      const existing = await db.questions.where('contentHash').equals(key).first();
+      if (existing && existing.answerHash === q.answerHash) {
+        skipped++;
+        continue;
+      }
+      // contentHash 相同但 answerHash 不同 → 冲突，仍导入
+      conflicts++;
+    }
+
+    seen.set(key, { q, index: i });
+    unique.push(q);
+  }
+
+  // 创建题库
   const bank: QuestionBank = {
     id: bankId,
     name: bankName || '导入题库',
     createdAt: now,
     updatedAt: now,
-    questionCount: rawQuestions.length,
+    questionCount: unique.length,
   };
 
-  // 标准化题目
-  const questions = rawQuestions.map(raw => normalizeQuestion(raw, bankId));
-
   // 写入数据库（单事务）
-  await createBankWithQuestions(bank, questions);
+  await createBankWithQuestions(bank, unique);
 
-  return { bank, count: questions.length };
+  return { bank, count: unique.length, skipped, conflicts };
 }
 
 // ============ 从 ZIP/JSON 恢复全部数据 ============
@@ -402,8 +462,9 @@ export async function importFullBackup(file: File): Promise<void> {
   }
 
   const data = JSON.parse(jsonText);
+  const version = data.version ?? 1;
 
-  if (data.version !== 1) {
+  if (version !== 1 && version !== 2) {
     throw new Error('备份版本不支持');
   }
 
@@ -414,6 +475,8 @@ export async function importFullBackup(file: File): Promise<void> {
   }
   const records = data.records || [];
   const favorites = data.favorites || [];
+  const aiExplanations = data.aiExplanations || [];
+  const settings = data.settings || [];
 
-  await replaceAllData(banks, questions, records, favorites);
+  await replaceAllData(banks, questions, records, favorites, aiExplanations, settings);
 }
