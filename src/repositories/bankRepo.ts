@@ -10,6 +10,10 @@ export async function renameBank(bankId: string, newName: string): Promise<void>
 }
 
 export async function deleteBankCascade(bankId: string): Promise<void> {
+  const questionIds = await db.questions.where('bankId').equals(bankId).primaryKeys();
+  if (questionIds.length > 0) {
+    await db.aiExplanations.where('questionId').anyOf(questionIds as string[]).delete();
+  }
   await db.questions.where('bankId').equals(bankId).delete();
   await db.records.where('bankId').equals(bankId).delete();
   await db.favorites.where('bankId').equals(bankId).delete();
