@@ -8,7 +8,7 @@ import {
   saveProgress,
 } from '../../src/services/practiceService';
 import { db } from '../../src/db';
-import type { Question, PracticeRecord } from '../../src/types';
+import type { Question } from '../../src/types';
 
 // 辅助：往 db 塞题目
 async function seedQuestions(bankId: string, count: number): Promise<Question[]> {

@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import QuestionCard from '../components/QuestionCard';
 import Icon from '../components/Icon';
 import { getCurrentWrongQuestionIds } from '../domain/wrongQuestion';
@@ -19,13 +19,6 @@ export default function WrongPage() {
   }, [bankId]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
-
-  // Adjust index when wrongQuestions list shrinks (e.g. after answering correctly)
-  useEffect(() => {
-    if (wrongQuestions && wrongQuestions.length > 0) {
-      setCurrentIndex(prev => Math.min(prev, wrongQuestions.length - 1));
-    }
-  }, [wrongQuestions?.length]);
 
   if (!wrongQuestions) {
     return <div className="flex items-center justify-center h-64 text-text-muted">加载中...</div>;
