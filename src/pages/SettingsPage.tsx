@@ -51,9 +51,12 @@ function Row({
   onClick?: () => void; danger?: boolean;
 }) {
   return (
-    <button
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-bg-secondary active:scale-[0.99] transition-all"
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      className={`w-full flex items-center gap-3 px-4 py-3 text-left ${onClick ? 'hover:bg-bg-secondary active:scale-[0.99] cursor-pointer' : ''} transition-all`}
     >
       <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
         <Icon name={icon} size={16} className={iconColor} />
@@ -63,7 +66,7 @@ function Row({
         {sub && <div className="text-xs text-text-muted mt-0.5 truncate">{sub}</div>}
       </div>
       {right ?? <Icon name="chevron-right" size={16} className="text-text-muted shrink-0" />}
-    </button>
+    </div>
   );
 }
 
@@ -244,6 +247,7 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-text-secondary block mb-1">API Key</label>
                     <input
                       type="password"
+                      autoComplete="off"
                       value={aiKey}
                       onChange={e => setAiKey(e.target.value)}
                       placeholder="sk-..."
