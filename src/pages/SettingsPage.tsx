@@ -257,36 +257,38 @@ export default function SettingsPage() {
             />
             <Collapse open={aiExpanded}>
               <div className="px-4 pb-4 pt-1 space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-text-secondary block mb-1">API 地址</label>
-                  <input
-                    type="text"
-                    value={aiEndpoint}
-                    onChange={e => setAiEndpoint(e.target.value)}
-                    placeholder="https://api.openai.com/v1"
-                    className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-text-secondary block mb-1">API Key</label>
-                  <input
-                    type="password"
-                    value={aiKey}
-                    onChange={e => setAiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-text-secondary block mb-1">模型名称</label>
-                  <input
-                    type="text"
-                    value={aiModel}
-                    onChange={e => setAiModel(e.target.value)}
-                    placeholder="gpt-4o-mini"
-                    className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
-                  />
-                </div>
+                <form onSubmit={e => e.preventDefault()} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-medium text-text-secondary block mb-1">API 地址</label>
+                    <input
+                      type="text"
+                      value={aiEndpoint}
+                      onChange={e => setAiEndpoint(e.target.value)}
+                      placeholder="https://api.openai.com/v1"
+                      className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-text-secondary block mb-1">API Key</label>
+                    <input
+                      type="password"
+                      value={aiKey}
+                      onChange={e => setAiKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-text-secondary block mb-1">模型名称</label>
+                    <input
+                      type="text"
+                      value={aiModel}
+                      onChange={e => setAiModel(e.target.value)}
+                      placeholder="gpt-4o-mini"
+                      className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
+                    />
+                  </div>
+                </form>
                 <button
                   onClick={saveAIConfig}
                   className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-semibold active:bg-accent-hover active:scale-[0.98] transition-all"
