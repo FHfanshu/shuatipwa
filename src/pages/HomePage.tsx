@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../db';
+import { renameBank, deleteBankCascade } from '../repositories/bankRepo';
 import type { QuestionBank, PracticeMode, PracticeRecord } from '../types';
 import Icon from '../components/Icon';
 import ThemeToggle from '../components/ThemeToggle';
@@ -99,10 +100,7 @@ export default function HomePage() {
     setRenameSaving(true);
     setRenameError('');
     try {
-      await db.banks.update(renameTarget.id, {
-        name: nextName,
-        updatedAt: Date.now(),
-      });
+      await renameBank(renameTarget.id, nextName);
       setToast({ type: 'success', text: '题库已重命名' });
       setRenameTarget(null);
       setRenameValue('');
@@ -170,10 +168,7 @@ export default function HomePage() {
                   onRename={() => openRename(bank)}
                   onDelete={async () => {
                     if (confirm(`确定删除「${bank.name}」？\n此操作不可撤销！`)) {
-                      await db.questions.where('bankId').equals(bank.id).delete();
-                      await db.records.where('bankId').equals(bank.id).delete();
-                      await db.favorites.where('bankId').equals(bank.id).delete();
-                      await db.banks.delete(bank.id);
+                      await deleteBankCascade(bank.id);
                       setToast({ type: 'success', text: '题库已删除' });
                     }
                   }}

@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import type { Question, AnswerStatus } from '../types';
 import { checkAnswer, getQuestionTypeLabel, getQuestionTypeColor } from '../utils/helper';
 import { getAIConfig, streamExplanation } from '../utils/ai';
-import { db } from '../db';
+import { upsertRecord } from '../repositories/recordRepo';
+import { isFavorited, toggleFavorite as toggleFavoriteRepo } from '../repositories/favoriteRepo';
+import { getCachedExplanation, cacheExplanation } from '../repositories/aiExplanationRepo';
 import Icon from './Icon';
 import ReactMarkdown from 'react-markdown';
 
@@ -28,9 +30,10 @@ interface Props {
     recordId?: number | null;
   };
   showAnswerImmediately?: boolean;
+  allowRedo?: boolean;
 }
 
-export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, onStateChange, savedState, showAnswerImmediately = true }: Props) {
+export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, onStateChange, savedState, showAnswerImmediately = true, allowRedo }: Props) {
   const [userAnswer, setUserAnswer] = useState<string[]>([]);
   const [blankInput, setBlankInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -109,32 +112,16 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   }, [userAnswer, blankInput, submitted, status, recordId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    db.favorites.where('[bankId+questionId]').equals([bankId, question.id]).first().then(f => {
-      setIsFavorite(!!f);
-    });
+    isFavorited(bankId, question.id).then(setIsFavorite);
   }, [bankId, question.id]);
 
   async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number) {
-    if (recordIdRef.current !== null) {
-      await db.records.update(recordIdRef.current, {
-        userAnswer: answer,
-        status: nextStatus,
-        timestamp,
-      });
-      return;
-    }
-
-    const nextRecordId = await db.records.add({
-      bankId,
-      questionId: question.id,
-      userAnswer: answer,
-      status: nextStatus,
-      timestamp,
-    });
-    if (typeof nextRecordId === 'number') {
-      recordIdRef.current = nextRecordId;
-      setRecordId(nextRecordId);
-    }
+    const nextId = await upsertRecord(
+      { bankId, questionId: question.id, userAnswer: answer, status: nextStatus, timestamp },
+      recordIdRef.current
+    );
+    recordIdRef.current = nextId;
+    setRecordId(nextId);
   }
 
   const toggleOption = (opt: string) => {
@@ -185,21 +172,26 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
   };
 
+  const handleRedo = () => {
+    setUserAnswer([]);
+    setBlankInput('');
+    setSubmitted(false);
+    setStatus('unanswered');
+    setRecordId(null);
+    recordIdRef.current = null;
+    submittedAnswerRef.current = [];
+    setAiExplanation('');
+    setShowExplanation(false);
+  };
+
   const toggleFavorite = async () => {
-    const existing = await db.favorites.where('[bankId+questionId]').equals([bankId, question.id]).first();
-    if (existing) {
-      await db.favorites.delete(existing.id!);
-      setIsFavorite(false);
-    } else {
-      await db.favorites.add({ bankId, questionId: question.id, timestamp: Date.now() });
-      setIsFavorite(true);
-    }
+    const nowFav = await toggleFavoriteRepo(bankId, question.id);
+    setIsFavorite(nowFav);
   };
 
   const handleAIExplanation = async (forceRefresh = false) => {
-    // Try loading from cache first
     if (!forceRefresh) {
-      const cached = await db.aiExplanations.where('questionId').equals(question.id).first();
+      const cached = await getCachedExplanation(question.id);
       if (cached) {
         setAiExplanation(cached.explanation);
         setAiCacheId(cached.id ?? null);
@@ -240,14 +232,8 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       }
       // Cache the result
       if (fullText) {
-        // Delete old cache if exists
-        if (aiCacheId) await db.aiExplanations.delete(aiCacheId);
-        const newId = await db.aiExplanations.add({
-          questionId: question.id,
-          explanation: fullText,
-          createdAt: Date.now(),
-        });
-        setAiCacheId(newId ?? null);
+        const newId = await cacheExplanation(question.id, fullText, aiCacheId);
+        setAiCacheId(newId);
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -291,8 +277,10 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
             let optionClass = 'border-border-default bg-bg-card hover:border-accent/40';
 
             if (submitted && showAnswerImmediately) {
-              if (isCorrect) {
+              if (isCorrect && selected) {
                 optionClass = 'border-emerald-500/70 bg-emerald-500/10 text-text-primary';
+              } else if (isCorrect && !selected) {
+                optionClass = 'border-emerald-500/40 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400';
               } else if (selected && !isCorrect) {
                 optionClass = 'border-red-500/70 bg-red-500/10 text-text-primary';
               } else {
@@ -313,7 +301,8 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               >
                 <span className="font-bold text-sm mt-0.5 shrink-0">{key}</span>
                 <span className="text-sm leading-relaxed">{value}</span>
-                {submitted && showAnswerImmediately && isCorrect && <Icon name="check" size={16} className="ml-auto text-emerald-500" />}
+                {submitted && showAnswerImmediately && isCorrect && selected && <Icon name="check" size={16} className="ml-auto text-emerald-500" />}
+                {submitted && showAnswerImmediately && isCorrect && !selected && <Icon name="circle" size={16} className="ml-auto text-emerald-500/50" />}
                 {submitted && showAnswerImmediately && selected && !isCorrect && <Icon name="x" size={16} className="ml-auto text-red-500" />}
               </button>
             );
@@ -427,6 +416,16 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
             >
               <Icon name="lightbulb" size={16} />
               {question.explanation ? '查看解析' : aiExplanation ? '查看 AI 解析' : '生成 AI 解析'}
+            </button>
+          )}
+
+          {allowRedo && (
+            <button
+              onClick={handleRedo}
+              className="w-full py-3 bg-bg-secondary text-text-secondary border border-border-subtle rounded-xl text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <Icon name="redo" size={16} />
+              再做一次
             </button>
           )}
         </div>
