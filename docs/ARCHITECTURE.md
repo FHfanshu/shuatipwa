@@ -21,11 +21,10 @@ src/
     questionType.ts    # 题型推断和标签映射
   services/            # 业务服务层，给 UI 调用
     practiceService.ts # 做题流程：加载、恢复、提交、统计
-    importService.ts   # 题库导入
-    exportService.ts   # 题库导出
-    backupService.ts   # 全量备份导入导出
-    aiService.ts       # AI 解析请求和流式渲染
-    versionService.ts  # 版本检测
+    importService.ts   # 题库导入 + 全量备份恢复
+    exportService.ts   # 题库导出 + 全量备份导出
+    aiService.ts       # AI 解析：缓存查询、配置读取、流式调用、缓存写入
+    versionService.ts  # 版本检测（待迁入）
   repositories/        # 只负责 DB 读写
     bankRepo.ts
     questionRepo.ts
@@ -36,7 +35,7 @@ src/
     index.ts           # Dexie schema 定义
   types/
     index.ts           # 所有类型定义
-  utils/               # 逐步减少，避免变成垃圾桶
+  utils/               # 最小化：helper.ts + downloadBlob + aiPrompt + version
   pages/
   components/
   contexts/
@@ -82,6 +81,8 @@ src/
 - ~~`WrongPage.tsx` 直接调用 `db.records`、`db.questions`~~ ✅ 已迁到 repo
 - ~~`helper.ts` 混合了 domain 逻辑（checkAnswer）和 UI 映射（getQuestionTypeColor）~~ ✅ checkAnswer/getCurrentWrongQuestionIds 已迁到 domain
 - ~~`PracticePage.tsx` 直接调用 `db.records`、`db.questions`、`db.favorites`（6 处）~~ ✅ 已迁到 practiceService
+- ~~`textParser.ts` 和 `import.ts` 中 `inferQuestionType` / `inferRawQuestionType` 逻辑重复~~ ✅ 已统一到 domain/questionParser.ts
+- ~~`utils/export.ts` 和 `utils/import.ts` 仍直接调用 db~~ ✅ 已迁到 importService/exportService，DB 操作通过 repo
+- ~~`utils/ai.ts` 仍为 Infrastructure 层，待迁到 services/aiService~~ ✅ 已迁到 aiService，QuestionCard 不再直接调用 repo/ai
 - `HomePage.tsx` 的 `useLiveQuery` 仍用原始 db 调用（需要保留以支持响应式更新）
-- `textParser.ts` 和 `import.ts` 中 `inferQuestionType` / `inferRawQuestionType` 逻辑重复
-- `utils/export.ts` 和 `utils/import.ts` 仍直接调用 db — 待迁到 service 层
+
