@@ -25,12 +25,14 @@ export async function createBank(bank: QuestionBank): Promise<void> {
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations], async () => {
+  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations, db.practiceSessions, db.settings], async () => {
     await db.banks.clear();
     await db.questions.clear();
     await db.records.clear();
     await db.favorites.clear();
     await db.aiExplanations.clear();
+    await db.practiceSessions.clear();
+    await db.settings.clear();
   });
 }
 
@@ -55,12 +57,13 @@ export async function replaceAllData(
   aiExplanations: AIExplanation[] = [],
   settings: AppSetting[] = [],
 ): Promise<void> {
-  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations, db.settings], async () => {
+  await db.transaction('rw', [db.banks, db.questions, db.records, db.favorites, db.aiExplanations, db.practiceSessions, db.settings], async () => {
     await db.banks.clear();
     await db.questions.clear();
     await db.records.clear();
     await db.favorites.clear();
     await db.aiExplanations.clear();
+    await db.practiceSessions.clear();
     await db.settings.clear();
 
     if (banks.length) await db.banks.bulkAdd(banks);
