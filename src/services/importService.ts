@@ -477,7 +477,7 @@ export async function importFullBackup(file: File): Promise<void> {
   const favorites = data.favorites || [];
   const aiExplanations = data.aiExplanations || [];
   const settings = (data.settings || []).filter(
-    (s: { key: string }) => s.key !== 'ai_apiKey'
+    (s: { key: string }) => !s.key.startsWith('ai_')
   );
 
   // 对缺 hash 的 questions 补算 contentHash / answerHash

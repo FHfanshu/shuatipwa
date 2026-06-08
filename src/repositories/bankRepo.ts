@@ -17,6 +17,7 @@ export async function deleteBankCascade(bankId: string): Promise<void> {
   await db.questions.where('bankId').equals(bankId).delete();
   await db.records.where('bankId').equals(bankId).delete();
   await db.favorites.where('bankId').equals(bankId).delete();
+  await db.practiceSessions.where('bankId').equals(bankId).delete();
   await db.banks.delete(bankId);
 }
 

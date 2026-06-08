@@ -31,9 +31,9 @@ db.version(3).stores({
   // Backfill contentHash/answerHash for existing questions
   const table = tx.table('questions');
   const questions = await table.toArray();
-  const missing = questions.filter(q => !q.contentHash);
+  const missing = questions.filter(q => !q.contentHash || !q.answerHash);
   if (missing.length === 0) return;
-  const withHashes = await attachQuestionHashes(missing);
+  const withHashes = await Dexie.waitFor(attachQuestionHashes(missing));
   await table.bulkPut(withHashes);
 });
 
