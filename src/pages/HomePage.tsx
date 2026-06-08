@@ -5,6 +5,7 @@ import { db } from '../db';
 import type { QuestionBank, PracticeRecord } from '../types';
 import Icon from '../components/Icon';
 import ThemeToggle from '../components/ThemeToggle';
+import { loadLastPracticeSession, MODE_LABELS } from '../services/practiceSessionStore';
 
 /* ── helpers ── */
 function dayKey(ts: number) {
@@ -89,7 +90,7 @@ export default function HomePage() {
           </div>
 
           {/* ── Continue CTA ── */}
-          <ContinueCard banks={banks} records={records} navigate={navigate} />
+          <ContinueCard banks={banks} navigate={navigate} />
 
           {/* ── Divider ── */}
           <div className="my-6 h-px bg-border-subtle" />
@@ -279,44 +280,31 @@ function LineChart({ data }: { data: { label: string; value: number }[] }) {
 /* ── Continue Card ── */
 function ContinueCard({
   banks,
-  records,
   navigate,
 }: {
   banks: QuestionBank[];
-  records?: PracticeRecord[];
   navigate: (path: string) => void;
 }) {
   const info = useMemo(() => {
-    if (!records || records.length === 0) return null;
-
-    const latest = records.reduce((a, b) => (a.timestamp > b.timestamp ? a : b));
-    const bank = banks.find(b => b.id === latest.bankId);
+    const last = loadLastPracticeSession();
+    if (!last) return null;
+    const bank = banks.find(b => b.id === last.bankId);
     if (!bank) return null;
-
-    let questionIndex: number | null = null;
-    try {
-      const saved = localStorage.getItem(`practice-progress-${bank.id}-sequential`);
-      if (saved) {
-        const parsed = JSON.parse(saved) as { currentIndex: number };
-        if (typeof parsed.currentIndex === 'number') questionIndex = parsed.currentIndex;
-      }
-    } catch { /* ignore */ }
-
-    if (questionIndex === null) {
-      const bankRecords = records.filter(r => r.bankId === bank.id);
-      const answeredIds = new Set(bankRecords.map(r => r.questionId));
-      questionIndex = Math.min(answeredIds.size, bank.questionCount - 1);
-    }
-
-    return { bankName: bank.name, bankId: bank.id, questionIndex, questionCount: bank.questionCount };
-  }, [banks, records]);
+    return {
+      bankName: bank.name,
+      bankId: last.bankId,
+      mode: last.mode,
+      currentIndex: last.currentIndex,
+      modeLabel: MODE_LABELS[last.mode],
+    };
+  }, [banks]);
 
   if (!info) return null;
 
   return (
     <div className="mt-3 animate-reveal-up reveal-delay-2">
       <button
-        onClick={() => navigate(`/practice/${info.bankId}/sequential`)}
+        onClick={() => navigate(`/practice/${info.bankId}/${info.mode}?resume=1`)}
         className="group flex w-full items-center gap-4 rounded-2xl border border-border-subtle bg-bg-card px-5 py-4 text-left transition-all duration-300 hover:border-border-default hover:shadow-[0_8px_32px_-12px_var(--copper-glow)] active:scale-[0.985]"
       >
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-copper/20 bg-copper/10 text-copper transition-transform duration-300 group-hover:scale-105">
@@ -325,7 +313,7 @@ function ContinueCard({
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-copper tracking-wide">继续上次</p>
           <p className="mt-0.5 text-[15px] font-semibold text-text-primary leading-snug">
-            {info.bankName} · 第 {info.questionIndex + 1} 题
+            {info.bankName} · {info.modeLabel} · 第 {info.currentIndex + 1} 题
           </p>
         </div>
         <Icon name="chevron-right" size={20} className="shrink-0 text-copper/60 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-copper" />

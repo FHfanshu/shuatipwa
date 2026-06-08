@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type { PracticeMode, AnswerStatus } from '../types';
 import type { QuestionState } from '../services/practiceService';
 import {
@@ -9,6 +9,8 @@ import {
   saveProgress,
   computeStats,
 } from '../services/practiceService';
+import { saveLastPracticeSession, loadLastPracticeSession } from '../services/practiceSessionStore';
+import { getQuestionsByIds } from '../repositories/questionRepo';
 import QuestionCard from '../components/QuestionCard';
 import QuestionOverview from '../components/QuestionOverview';
 import Icon from '../components/Icon';
@@ -17,6 +19,8 @@ import type { Question } from '../types';
 export default function PracticePage() {
   const { bankId, mode } = useParams<{ bankId: string; mode: PracticeMode }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resume = searchParams.get('resume') === '1';
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -43,6 +47,26 @@ export default function PracticePage() {
         return;
       }
 
+      // resume=1：恢复上次会话的题目顺序
+      if (resume) {
+        const last = loadLastPracticeSession();
+        if (last && last.bankId === bankId && last.mode === mode && last.questionIds.length > 0) {
+          const qs = await getQuestionsByIds(last.questionIds);
+          // getQuestionsByIds 不保证顺序，按保存的 questionIds 重排
+          const idToQ = new Map(qs.map(q => [q.id, q]));
+          const ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
+          const session = await loadPracticeSession(bankId, mode, { shuffle: false });
+          setQuestions(ordered.length > 0 ? ordered : session.questions);
+          setResults(session.results);
+          setQuestionStates(session.questionStates);
+          setCurrentIndex(Math.min(last.currentIndex, (ordered.length > 0 ? ordered : session.questions).length - 1));
+          setRestored(true);
+          setLoading(false);
+          lastSavedRef.current = '';
+          return;
+        }
+      }
+
       const session = await loadPracticeSession(bankId, mode, {
         examCount: mode === 'exam' ? examCount : undefined,
       });
@@ -66,7 +90,19 @@ export default function PracticePage() {
     };
 
     load();
-  }, [bankId, mode, examStarted, examCount]);
+  }, [bankId, mode, examStarted, examCount, resume]);
+
+  // 保存 last practice session（非考试模式）
+  useEffect(() => {
+    if (!bankId || !mode || mode === 'exam' || questions.length === 0 || !restored) return;
+    saveLastPracticeSession({
+      bankId,
+      mode,
+      currentIndex,
+      questionIds: questions.map(q => q.id),
+      updatedAt: Date.now(),
+    });
+  }, [bankId, mode, currentIndex, questions, restored]);
 
   // 保存进度到 localStorage（顺序模式）
   useEffect(() => {
