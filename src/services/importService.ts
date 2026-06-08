@@ -476,7 +476,20 @@ export async function importFullBackup(file: File): Promise<void> {
   const records = data.records || [];
   const favorites = data.favorites || [];
   const aiExplanations = data.aiExplanations || [];
-  const settings = data.settings || [];
+  const settings = (data.settings || []).filter(
+    (s: { key: string }) => s.key !== 'ai_apiKey'
+  );
+
+  // 对缺 hash 的 questions 补算 contentHash / answerHash
+  const missingHash = questions.filter(q => !q.contentHash || !q.answerHash);
+  if (missingHash.length > 0) {
+    const hashed = await attachQuestionHashes(missingHash);
+    const hashMap = new Map(hashed.map(q => [q.id, q]));
+    for (let i = 0; i < questions.length; i++) {
+      const h = hashMap.get(questions[i].id);
+      if (h) questions[i] = h;
+    }
+  }
 
   await replaceAllData(banks, questions, records, favorites, aiExplanations, settings);
 }

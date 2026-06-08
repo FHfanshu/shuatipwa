@@ -5,7 +5,7 @@ import { getAllQuestions, getQuestionsByBankId } from '../repositories/questionR
 import { getAllRecords } from '../repositories/recordRepo';
 import { getAllFavorites } from '../repositories/favoriteRepo';
 import { getAllExplanations } from '../repositories/aiExplanationRepo';
-import { getAllSettings } from '../repositories/settingsRepo';
+import { getSettingsForExport } from '../repositories/settingsRepo';
 
 export type ProgressCallback = (step: string, percent: number) => void;
 
@@ -20,7 +20,7 @@ export async function exportAllData(onProgress?: ProgressCallback): Promise<stri
   onProgress?.('读取 AI 解析...', 60);
   const aiExplanations = await getAllExplanations();
   onProgress?.('读取设置...', 65);
-  const settings = await getAllSettings();
+  const settings = await getSettingsForExport();
 
   onProgress?.('整理数据...', 70);
   const questionsByBank: Record<string, typeof allQuestions> = {};
