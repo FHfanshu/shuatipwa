@@ -25,3 +25,6 @@ dist-ssr
 
 # Claude audit files
 .claude/audit*
+
+# Local importable question bank files
+question_banks/
