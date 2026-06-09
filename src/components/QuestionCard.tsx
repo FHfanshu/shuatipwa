@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Question, AnswerStatus } from '../types';
-import { checkAnswer, getQuestionTypeColor } from '../utils/helper';
-import { getQuestionTypeLabel } from '../domain/questionType';
+import { checkAnswer } from '../utils/helper';
 import { loadCachedExplanation, generateExplanation, generateGuidance, type GuidanceChatMessage } from '../services/aiService';
 import { upsertRecord } from '../repositories/recordRepo';
 import { isFavorited, toggleFavorite as toggleFavoriteRepo } from '../repositories/favoriteRepo';
@@ -13,6 +12,7 @@ interface Props {
   bankId: string;
   index: number;
   total: number;
+  counterText?: string;
   onAnswer?: (status: AnswerStatus) => void;
   onAutoAdvance?: () => void;
   onStateChange?: (state: {
@@ -22,6 +22,7 @@ interface Props {
     status: AnswerStatus;
     recordId?: number | null;
   }) => void;
+  onStateReset?: () => void;
   savedState?: {
     userAnswer: string[];
     blankInput: string;
@@ -33,7 +34,7 @@ interface Props {
   allowRedo?: boolean;
 }
 
-export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, onStateChange, savedState, showAnswerImmediately = true, allowRedo }: Props) {
+export default function QuestionCard({ question, bankId, index, total, counterText, onAnswer, onAutoAdvance, onStateChange, onStateReset, savedState, showAnswerImmediately = true, allowRedo }: Props) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteSaving, setFavoriteSaving] = useState(false);
   const [favoriteError, setFavoriteError] = useState('');
@@ -44,13 +45,12 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const [aiCacheId, setAiCacheId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState('');
   const [savingRecord, setSavingRecord] = useState(false);
-  const [showGuidance, setShowGuidance] = useState(false);
-  const [guidanceMessages, setGuidanceMessages] = useState<GuidanceChatMessage[]>([]);
-  const [guidanceInput, setGuidanceInput] = useState('');
+  const [guidanceHint, setGuidanceHint] = useState('');
   const [guidanceLoading, setGuidanceLoading] = useState(false);
   const [guidanceError, setGuidanceError] = useState('');
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRestoringRef = useRef(false);
+  const shouldAutoAdvanceRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const guidanceAbortRef = useRef<AbortController | null>(null);
   const recordIdRef = useRef<number | null>(null);
@@ -83,6 +83,33 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const hasAnswer = question.answer.length > 0;
   const hasValidOptions = question.type !== 'single' && question.type !== 'multiple' ? true : optionEntries.length > 0;
   const isQuestionReady = hasAnswer && hasValidOptions;
+  const typeMeta = {
+    single: {
+      label: '单选题',
+      badge: 'border-sky-500/25 bg-sky-500/8 text-sky-500',
+      dot: 'bg-sky-500',
+    },
+    multiple: {
+      label: '多选题',
+      badge: 'border-amber-500/30 bg-amber-500/10 text-amber-500',
+      dot: 'bg-amber-500',
+    },
+    judge: {
+      label: '判断题',
+      badge: 'border-emerald-500/25 bg-emerald-500/8 text-emerald-500',
+      dot: 'bg-emerald-500',
+    },
+    blank: {
+      label: '填空题',
+      badge: 'border-violet-500/25 bg-violet-500/8 text-violet-500',
+      dot: 'bg-violet-500',
+    },
+    short: {
+      label: '简答题',
+      badge: 'border-rose-500/25 bg-rose-500/8 text-rose-500',
+      dot: 'bg-rose-500',
+    },
+  }[question.type];
 
   useEffect(() => {
     submittedAnswerRef.current = init.blankInput.trim()
@@ -91,13 +118,14 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     recordIdRef.current = init.recordId;
   }, [init]);
 
-  // Auto-advance on correct answer (skip if restoring from saved state)
+  // Auto-advance only after a fresh correct answer, not when revisiting restored state.
   useEffect(() => {
     if (isRestoringRef.current) {
       isRestoringRef.current = false;
       return;
     }
-    if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance) {
+    if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance && shouldAutoAdvanceRef.current) {
+      shouldAutoAdvanceRef.current = false;
       autoAdvanceTimerRef.current = setTimeout(() => {
         onAutoAdvance();
       }, 650);
@@ -178,10 +206,12 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
     const result = checkAnswer(question, answer);
     submittedAnswerRef.current = answer;
+    shouldAutoAdvanceRef.current = result === 'correct';
     closeGuidance();
     setSubmitted(true);
 
     if (isSelfGrade && showAnswerImmediately) {
+      shouldAutoAdvanceRef.current = false;
       setStatus('unanswered');
       return;
     }
@@ -199,6 +229,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       : blankInput.trim()
         ? [blankInput.trim()]
         : userAnswer;
+    shouldAutoAdvanceRef.current = nextStatus === 'correct';
     setStatus(nextStatus);
     void saveRecord(nextStatus, answer, new Date().getTime());
     onAnswer?.(nextStatus);
@@ -219,8 +250,10 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     submittedAnswerRef.current = [];
     setSaveError('');
     setSavingRecord(false);
+    shouldAutoAdvanceRef.current = false;
     closeGuidance();
     closeExplanation();
+    onStateReset?.();
   };
 
   const toggleFavorite = async () => {
@@ -250,37 +283,23 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   };
 
   const closeGuidance = () => {
-    setShowGuidance(false);
-    setGuidanceInput('');
     setGuidanceLoading(false);
-    setGuidanceError('');
     guidanceAbortRef.current?.abort();
   };
 
   const openGuidance = () => {
-    setShowGuidance(true);
-    if (guidanceMessages.length === 0 && !guidanceLoading) {
-      void sendGuidanceMessage('我完全没思路，先帮我回忆这题考什么知识点。');
-    }
+    void generateGuidanceHint();
   };
 
-  const sendGuidanceMessage = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || guidanceLoading) return;
+  const generateGuidanceHint = async () => {
+    if (guidanceLoading) return;
 
-    setShowGuidance(true);
-    setGuidanceInput('');
     setGuidanceError('');
-    const nextMessages: GuidanceChatMessage[] = [
-      ...guidanceMessages,
-      { role: 'user', content: trimmed },
-      { role: 'assistant', content: '' },
-    ];
-    setGuidanceMessages(nextMessages);
     setGuidanceLoading(true);
     guidanceAbortRef.current?.abort();
     const controller = new AbortController();
     guidanceAbortRef.current = controller;
+    const previousHint = guidanceHint.trim();
     const timeoutMessage = 'AI 提示响应超时，请稍后重试';
     let timedOut = false;
     const timeout = window.setTimeout(() => {
@@ -289,25 +308,29 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     }, 45000);
 
     try {
-      const historyForRequest = nextMessages.slice(0, -1);
+      const historyForRequest: GuidanceChatMessage[] = previousHint
+        ? [
+            { role: 'user', content: '给我一个很短的 hint。' },
+            { role: 'assistant', content: previousHint },
+            { role: 'user', content: '再给我一个很短的新提示，不要重复上一条。' },
+          ]
+        : [
+            { role: 'user', content: '给我一个很短的 hint。' },
+          ];
+      let nextHint = '';
       const finalText = await generateGuidance(
         question,
         historyForRequest,
         textChunk => {
-          setGuidanceMessages(messages => {
-            const next = [...messages];
-            const last = next[next.length - 1];
-            if (last?.role === 'assistant') {
-              next[next.length - 1] = { role: 'assistant', content: textChunk };
-            }
-            return next;
-          });
+          nextHint = textChunk.trim();
         },
         controller.signal,
       );
-      if (!finalText.trim()) {
+      nextHint = finalText.trim() || nextHint;
+      if (!nextHint) {
         throw new Error('AI 没有返回提示内容，请稍后重试');
       }
+      setGuidanceHint(nextHint);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         if (!timedOut) return;
@@ -318,7 +341,6 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
           ? err.message
           : 'AI 提示生成失败';
       setGuidanceError(message);
-      setGuidanceMessages(messages => messages.filter(message => message.content.trim()));
     } finally {
       window.clearTimeout(timeout);
       if (guidanceAbortRef.current === controller) {
@@ -372,11 +394,14 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     <div className="bg-bg-card rounded-2xl border border-border-subtle p-5">
       {/* 头部 */}
       <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-text-muted font-mono">{index + 1}/{total}</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${getQuestionTypeColor(question.type)}`}>
-            {getQuestionTypeLabel(question.type)}
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-lg bg-bg-secondary px-2.5 py-1.5 font-mono text-sm font-semibold leading-none text-text-secondary">
+            {counterText ?? `${index + 1}/${total}`}
           </span>
+          <div className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-semibold leading-none ${typeMeta.badge}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${typeMeta.dot}`} />
+            <span>{typeMeta.label}</span>
+          </div>
           {question.tags?.map(tag => (
             <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-bg-secondary text-text-secondary">
               {tag}
@@ -497,13 +522,31 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
       {/* 提交按钮 */}
       {!submitted && (
         <div className="space-y-2">
+          {(guidanceHint || guidanceError) && (
+            <div
+              className={`rounded-xl border px-3.5 py-2.5 text-sm leading-relaxed ${
+                guidanceError
+                  ? 'border-red-500/25 bg-red-500/10 text-red-500'
+                  : 'border-accent/20 bg-accent/10 text-text-primary'
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <Icon name={guidanceError ? 'alert-circle' : 'lightbulb'} size={15} className={guidanceError ? 'mt-0.5 shrink-0 text-red-500' : 'mt-0.5 shrink-0 text-accent'} />
+                <span>{guidanceError || guidanceHint}</span>
+              </div>
+            </div>
+          )}
           <button
             onClick={openGuidance}
-            disabled={!isQuestionReady}
+            disabled={!isQuestionReady || guidanceLoading}
             className="w-full py-3 bg-bg-secondary text-text-secondary border border-border-subtle font-medium rounded-xl active:scale-[0.98] disabled:opacity-40 transition-all flex items-center justify-center gap-2"
           >
-            <Icon name="messages-square" size={16} />
-            AI 提示
+            {guidanceLoading ? (
+              <span className="inline-block h-4 w-4 rounded-full border-2 border-text-muted border-t-transparent animate-spin" />
+            ) : (
+              <Icon name="lightbulb" size={16} />
+            )}
+            {guidanceLoading ? '生成一点提示...' : guidanceHint ? '换个提示' : 'AI 提示'}
           </button>
           <button
             onClick={handleSubmit}
@@ -664,109 +707,6 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
         </div>
       )}
 
-      {/* 答前 AI 提示 */}
-      {showGuidance && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeGuidance}>
-          <div className="absolute inset-0 bg-slate-950/55" />
-          <div
-            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-              <div className="min-w-0">
-                <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
-                  <Icon name="messages-square" size={18} className="text-accent" />
-                  AI 答前提示
-                </h3>
-                <p className="mt-0.5 text-xs text-text-muted">只讲思路和知识点，不直接给答案</p>
-              </div>
-              <button onClick={closeGuidance} className="p-1.5 active:bg-bg-secondary rounded-lg">
-                <Icon name="x" size={20} className="text-text-muted" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-              {guidanceMessages.length === 0 && !guidanceLoading && (
-                <div className="rounded-xl border border-border-subtle bg-bg-secondary/60 px-4 py-3 text-sm text-text-secondary">
-                  可以让 AI 帮你回忆相关知识点、拆题、给排除方向，但它不会直接告诉你答案。
-                </div>
-              )}
-
-              {guidanceMessages.map((message, messageIndex) => (
-                <div
-                  key={`${message.role}-${messageIndex}`}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[86%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                      message.role === 'user'
-                        ? 'bg-accent text-white'
-                        : 'bg-bg-secondary text-text-primary'
-                    }`}
-                  >
-                    {message.role === 'assistant' ? (
-                      <div className="prose prose-sm max-w-none">
-                        <ReactMarkdown>{message.content || '正在组织提示...'}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <span className="whitespace-pre-wrap">{message.content}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {guidanceError && (
-                <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-500">
-                  {guidanceError}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-border-subtle px-4 py-3 safe-area-bottom">
-              <div className="mb-2 flex gap-2 overflow-x-auto">
-                {['提示一个知识点', '怎么拆题？', '给我一个记忆口诀'].map(prompt => (
-                  <button
-                    key={prompt}
-                    onClick={() => sendGuidanceMessage(prompt)}
-                    disabled={guidanceLoading}
-                    className="shrink-0 rounded-full border border-border-subtle bg-bg-secondary px-3 py-1.5 text-xs text-text-secondary disabled:opacity-50"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-end gap-2">
-                <textarea
-                  value={guidanceInput}
-                  onChange={e => setGuidanceInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      void sendGuidanceMessage(guidanceInput);
-                    }
-                  }}
-                  disabled={guidanceLoading}
-                  placeholder="问问思路，不问答案..."
-                  rows={1}
-                  className="min-h-11 flex-1 resize-none rounded-xl border border-border-default bg-bg-primary px-3 py-2.5 text-sm text-text-primary outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:opacity-60"
-                />
-                <button
-                  onClick={() => void sendGuidanceMessage(guidanceInput)}
-                  disabled={guidanceLoading || !guidanceInput.trim()}
-                  className="h-11 w-11 shrink-0 rounded-xl bg-accent text-white disabled:opacity-40 active:scale-[0.97] flex items-center justify-center"
-                  title="发送"
-                >
-                  {guidanceLoading ? (
-                    <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  ) : (
-                    <Icon name="send" size={17} />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

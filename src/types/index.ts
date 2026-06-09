@@ -71,9 +71,10 @@ export interface AIExplanation {
 }
 
 export interface PracticeSessionRecord {
-  id: string; // 'last' 或 '${bankId}:${mode}'
+  id: string; // 'last' 或 '${bankId}:${mode}:${typeFilter}'
   bankId: string;
   mode: PracticeMode;
+  typeFilter?: QuestionType | null;
   currentIndex: number;
   questionIds: string[];
   updatedAt: number;

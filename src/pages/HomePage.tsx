@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../db';
-import type { QuestionBank, PracticeRecord, PracticeMode } from '../types';
+import type { QuestionBank, PracticeRecord, PracticeMode, QuestionType } from '../types';
 import Icon from '../components/Icon';
 import ThemeToggle from '../components/ThemeToggle';
 import { loadLastPracticeSession, MODE_LABELS } from '../services/practiceSessionStore';
@@ -290,6 +290,7 @@ function ContinueCard({
     bankName: string;
     bankId: string;
     mode: PracticeMode;
+    typeFilter: QuestionType | null;
     currentIndex: number;
     modeLabel: string;
   } | null>(null);
@@ -303,6 +304,7 @@ function ContinueCard({
         bankName: bank.name,
         bankId: last.bankId,
         mode: last.mode,
+        typeFilter: last.typeFilter ?? null,
         currentIndex: last.currentIndex,
         modeLabel: MODE_LABELS[last.mode],
       });
@@ -314,7 +316,7 @@ function ContinueCard({
   return (
     <div className="mt-3 animate-reveal-up reveal-delay-2">
       <button
-        onClick={() => navigate(`/practice/${info.bankId}/${info.mode}?resume=1`)}
+        onClick={() => navigate(`/practice/${info.bankId}/${info.mode}?resume=1${info.typeFilter ? `&type=${info.typeFilter}` : ''}`)}
         className="group flex w-full items-center gap-4 rounded-2xl border border-border-subtle bg-bg-card px-5 py-4 text-left transition-all duration-300 hover:border-border-default hover:shadow-[0_8px_32px_-12px_var(--copper-glow)] active:scale-[0.985]"
       >
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-copper/20 bg-copper/10 text-copper transition-transform duration-300 group-hover:scale-105">

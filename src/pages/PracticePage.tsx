@@ -40,6 +40,7 @@ export default function PracticePage() {
   // 加载题目 + 恢复进度
   useEffect(() => {
     if (!bankId || !mode) return;
+    let canceled = false;
 
     const load = async () => {
       setLoading(true);
@@ -48,6 +49,7 @@ export default function PracticePage() {
       try {
         if (mode === 'exam' && !examStarted) {
           const qs = await loadQuestions(bankId, mode, { typeFilter });
+          if (canceled) return;
           setQuestions(qs);
           setLoading(false);
           return;
@@ -56,13 +58,26 @@ export default function PracticePage() {
         // resume=1：恢复上次会话的题目顺序，失败则 fallback
         if (resume) {
           try {
-            const last = await loadLastPracticeSession();
-            if (last && last.bankId === bankId && last.mode === mode && last.questionIds.length > 0) {
+            const scopedLast = await loadLastPracticeSession(bankId, mode, typeFilter ?? null);
+            const globalLast = scopedLast ? null : await loadLastPracticeSession();
+            if (canceled) return;
+            const last = scopedLast
+              ?? (
+                globalLast
+                && globalLast.bankId === bankId
+                && globalLast.mode === mode
+                && (globalLast.typeFilter ?? null) === (typeFilter ?? null)
+                  ? globalLast
+                  : null
+              );
+            if (last && last.questionIds.length > 0) {
               const qs = await getQuestionsByIds(last.questionIds);
+              if (canceled) return;
               const idToQ = new Map(qs.map(q => [q.id, q]));
               const ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
               if (ordered.length > 0) {
                 const restored = await restoreFromRecords(bankId, mode, ordered);
+                if (canceled) return;
                 setQuestions(ordered);
                 setResults(restored.results);
                 setQuestionStates(restored.questionStates);
@@ -83,6 +98,7 @@ export default function PracticePage() {
           examCount: mode === 'exam' ? examCount : undefined,
           typeFilter,
         });
+        if (canceled) return;
 
         setQuestions(session.questions);
         setResults(session.results);
@@ -95,12 +111,13 @@ export default function PracticePage() {
         // 顺序模式兜底：尝试从 localStorage 恢复（IndexedDB 优先，但 localStorage 可能更近）
         if (mode === 'sequential' && Object.keys(session.results).length === 0) {
           const saved = loadSavedProgress(bankId, mode);
-          if (saved && saved.currentIndex < session.questions.length) {
+          if (!canceled && saved && saved.currentIndex < session.questions.length) {
             setCurrentIndex(saved.currentIndex);
             setResults(saved.results);
           }
         }
       } catch (err) {
+        if (canceled) return;
         console.error('加载练习失败:', err);
         setQuestions([]);
         setResults({});
@@ -111,7 +128,10 @@ export default function PracticePage() {
       }
     };
 
-    load();
+    void load();
+    return () => {
+      canceled = true;
+    };
   }, [bankId, mode, examStarted, examCount, resume, typeFilter, retryCount]);
 
   // 保存 last practice session（非考试模式）
@@ -120,11 +140,12 @@ export default function PracticePage() {
     void saveLastPracticeSession({
       bankId,
       mode,
+      typeFilter: typeFilter ?? null,
       currentIndex,
       questionIds: questions.map(q => q.id),
       updatedAt: Date.now(),
     });
-  }, [bankId, mode, currentIndex, questions, restored]);
+  }, [bankId, mode, typeFilter, currentIndex, questions, restored]);
 
   // 保存进度到 localStorage（顺序模式）
   useEffect(() => {
@@ -149,6 +170,19 @@ export default function PracticePage() {
     });
   }, []);
 
+  const handleResetQuestionState = useCallback((index: number) => {
+    setQuestionStates(prev => {
+      const next = new Map(prev);
+      next.delete(index);
+      return next;
+    });
+    setResults(prev => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+  }, []);
+
   const handleAutoAdvance = useCallback(() => {
     setCurrentIndex(prev => Math.min(prev + 1, questions.length - 1));
   }, [questions.length]);
@@ -161,6 +195,12 @@ export default function PracticePage() {
   };
 
   const stats = computeStats(results, questions.length);
+  const positionText = `${currentIndex + 1}/${questions.length}`;
+  const answeredText = `${stats.answered}/${questions.length}`;
+  const progressRatio = questions.length > 0
+    ? (mode === 'random' ? stats.answered : currentIndex + 1) / questions.length
+    : 0;
+  const progressText = mode === 'random' ? `已练 ${answeredText}` : positionText;
   const TYPE_LABELS: Record<string, string> = { single: '单选', multiple: '多选', judge: '判断', blank: '填空', short: '简答' };
   const typeLabel = typeFilter ? TYPE_LABELS[typeFilter] : '';
   const modeLabel = mode === 'exam' ? '考试中' : mode === 'wrong' ? '错题本' : mode === 'favorite' ? '收藏' : '练习';
@@ -323,7 +363,7 @@ export default function PracticePage() {
           <Icon name={modeIcon} size={16} /> {modeLabel}{typeLabel ? ` · ${typeLabel}` : ''}
         </div>
         <div className="text-sm text-text-secondary">
-          {stats.answered}/{questions.length}
+          {progressText}
         </div>
       </div>
 
@@ -331,7 +371,7 @@ export default function PracticePage() {
       <div className="h-1 bg-border-default shrink-0">
         <div
           className="h-full bg-accent transition-all duration-300"
-          style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+          style={{ width: `${progressRatio * 100}%` }}
         />
       </div>
 
@@ -343,9 +383,11 @@ export default function PracticePage() {
           bankId={bankId!}
           index={currentIndex}
           total={questions.length}
+          counterText={positionText}
           onAnswer={status => handleAnswer(currentIndex, status)}
           onAutoAdvance={handleAutoAdvance}
           onStateChange={state => handleSaveQuestionState(currentIndex, state)}
+          onStateReset={() => handleResetQuestionState(currentIndex)}
           savedState={questionStates.get(currentIndex)}
           showAnswerImmediately={mode !== 'exam'}
           allowRedo={mode === 'wrong'}
@@ -364,12 +406,12 @@ export default function PracticePage() {
 
         <div className="flex-1 flex flex-col items-center justify-center px-2">
           <div className="text-sm font-medium text-text-secondary mb-1">
-            {currentIndex + 1} / {questions.length}
+            {progressText}
           </div>
           <div className="w-full h-1 bg-border-default rounded-full overflow-hidden">
             <div
               className="h-full bg-accent rounded-full transition-all"
-              style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+              style={{ width: `${progressRatio * 100}%` }}
             />
           </div>
         </div>

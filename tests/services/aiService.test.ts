@@ -41,6 +41,20 @@ describe('buildGuidanceMessages', () => {
     expect(messages[0].content).toContain('绝对不要直接给最终答案');
     expect(messages[0].content).toContain('正确选项字母');
   });
+
+  it('preserves prior assistant hints so refresh requests can avoid repetition', () => {
+    const messages = buildGuidanceMessages(question(), [
+      { role: 'user', content: '给我一个很短的 hint。' },
+      { role: 'assistant', content: '先区分系统软件和应用软件。' },
+      { role: 'user', content: '再给我一个很短的新提示，不要重复上一条。' },
+    ]);
+
+    expect(messages.at(-2)).toEqual({
+      role: 'assistant',
+      content: '先区分系统软件和应用软件。',
+    });
+    expect(messages.at(-1)?.content).toContain('不要重复上一条');
+  });
 });
 
 describe('fetchModels', () => {
