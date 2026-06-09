@@ -7,7 +7,6 @@ import Icon from '../components/Icon';
 import { useTheme } from '../contexts/useTheme';
 import type { Theme, ColorPalette } from '../contexts/ThemeContext';
 import { PALETTE_LABELS, PALETTE_PREVIEW } from '../contexts/themeConstants';
-import { CURRENT_VERSION } from '../utils/version';
 import { BUILD_INFO, formatBuildTime } from '../utils/buildInfo';
 import { AI_PROMPT } from '../utils/aiPrompt';
 import { getAIConfig, saveAIConfig } from '../repositories/settingsRepo';
@@ -487,7 +486,7 @@ export default function SettingsPage() {
         <div className="text-center pt-4 pb-2 space-y-1.5">
           <div className="flex items-center justify-center gap-2">
             <span className="text-xs text-text-muted font-mono">
-              v{CURRENT_VERSION} · {BUILD_INFO.commitShort}
+              v{BUILD_INFO.version} · {BUILD_INFO.commitShort}
             </span>
             <button
               onClick={() => {
