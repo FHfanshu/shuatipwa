@@ -76,6 +76,15 @@ describe('checkAnswer', () => {
       expect(checkAnswer(q(['A']), undefined as unknown as string[])).toBe('unanswered');
     });
 
+    it('题库答案缺失时不会抛错', () => {
+      const badQuestion = q(['A'], { answer: undefined as unknown as string[] });
+      expect(checkAnswer(badQuestion, ['A'])).toBe('wrong');
+    });
+
+    it('自动忽略空白答案项', () => {
+      expect(checkAnswer(q([' A ', '']), ['a', ' '])).toBe('correct');
+    });
+
     it('填空题正确', () => {
       expect(checkAnswer(q(['hello'], { type: 'blank' }), ['hello'])).toBe('correct');
     });

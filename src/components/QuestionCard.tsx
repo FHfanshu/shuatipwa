@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Question, AnswerStatus } from '../types';
 import { checkAnswer, getQuestionTypeColor } from '../utils/helper';
 import { getQuestionTypeLabel } from '../domain/questionType';
-import { loadCachedExplanation, generateExplanation } from '../services/aiService';
+import { loadCachedExplanation, generateExplanation, generateGuidance, type GuidanceChatMessage } from '../services/aiService';
 import { upsertRecord } from '../repositories/recordRepo';
 import { isFavorited, toggleFavorite as toggleFavoriteRepo } from '../repositories/favoriteRepo';
 import Icon from './Icon';
@@ -35,14 +35,24 @@ interface Props {
 
 export default function QuestionCard({ question, bankId, index, total, onAnswer, onAutoAdvance, onStateChange, savedState, showAnswerImmediately = true, allowRedo }: Props) {
   const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteSaving, setFavoriteSaving] = useState(false);
+  const [favoriteError, setFavoriteError] = useState('');
   const [aiExplanation, setAiExplanation] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [showExplanation, setShowExplanation] = useState(false);
   const [aiCacheId, setAiCacheId] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState('');
+  const [savingRecord, setSavingRecord] = useState(false);
+  const [showGuidance, setShowGuidance] = useState(false);
+  const [guidanceMessages, setGuidanceMessages] = useState<GuidanceChatMessage[]>([]);
+  const [guidanceInput, setGuidanceInput] = useState('');
+  const [guidanceLoading, setGuidanceLoading] = useState(false);
+  const [guidanceError, setGuidanceError] = useState('');
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRestoringRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const guidanceAbortRef = useRef<AbortController | null>(null);
   const recordIdRef = useRef<number | null>(null);
   const submittedAnswerRef = useRef<string[]>([]);
 
@@ -67,33 +77,19 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   const [status, setStatus] = useState(init.status);
   const [recordId, setRecordId] = useState(init.recordId);
 
-  const prevQuestionIdRef = useRef(question.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const optionEntries = useMemo(() => (
+    question.options ? Object.entries(question.options).filter(([, value]) => String(value).trim()) : []
+  ), [question.options]);
+  const hasAnswer = question.answer.length > 0;
+  const hasValidOptions = question.type !== 'single' && question.type !== 'multiple' ? true : optionEntries.length > 0;
+  const isQuestionReady = hasAnswer && hasValidOptions;
+
   useEffect(() => {
-    if (prevQuestionIdRef.current !== question.id) {
-      prevQuestionIdRef.current = question.id;
-      setUserAnswer(init.userAnswer);
-      setBlankInput(init.blankInput);
-      setSubmitted(init.submitted);
-      setStatus(init.status);
-      setRecordId(init.recordId);
-      isRestoringRef.current = true;
-      submittedAnswerRef.current = init.blankInput.trim()
-        ? [init.blankInput.trim()]
-        : init.userAnswer;
-      recordIdRef.current = init.recordId;
-      setAiExplanation('');
-      setAiLoading(false);
-      setAiError('');
-      setShowExplanation(false);
-      setAiCacheId(null);
-      if (autoAdvanceTimerRef.current) {
-        clearTimeout(autoAdvanceTimerRef.current);
-        autoAdvanceTimerRef.current = null;
-      }
-      abortRef.current?.abort();
-    }
-  });
+    submittedAnswerRef.current = init.blankInput.trim()
+      ? [init.blankInput.trim()]
+      : init.userAnswer;
+    recordIdRef.current = init.recordId;
+  }, [init]);
 
   // Auto-advance on correct answer (skip if restoring from saved state)
   useEffect(() => {
@@ -104,7 +100,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance) {
       autoAdvanceTimerRef.current = setTimeout(() => {
         onAutoAdvance();
-      }, 450);
+      }, 650);
       return () => {
         if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
       };
@@ -119,16 +115,45 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   }, [userAnswer, blankInput, submitted, status, recordId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    isFavorited(bankId, question.id).then(setIsFavorite);
+    let canceled = false;
+    isFavorited(bankId, question.id)
+      .then(value => {
+        if (!canceled) setIsFavorite(value);
+      })
+      .catch(error => {
+        console.error('读取收藏状态失败:', error);
+        if (!canceled) setFavoriteError('收藏状态读取失败');
+      });
+    return () => { canceled = true; };
   }, [bankId, question.id]);
 
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
+      }
+      abortRef.current?.abort();
+      guidanceAbortRef.current?.abort();
+    };
+  }, []);
+
   async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number) {
-    const nextId = await upsertRecord(
-      { bankId, questionId: question.id, userAnswer: answer, status: nextStatus, timestamp },
-      recordIdRef.current
-    );
-    recordIdRef.current = nextId;
-    setRecordId(nextId);
+    setSavingRecord(true);
+    setSaveError('');
+    try {
+      const nextId = await upsertRecord(
+        { bankId, questionId: question.id, userAnswer: answer, status: nextStatus, timestamp },
+        recordIdRef.current
+      );
+      recordIdRef.current = nextId;
+      setRecordId(nextId);
+    } catch (error) {
+      console.error('保存做题记录失败:', error);
+      setSaveError('记录保存失败，请检查浏览器存储权限后重试');
+    } finally {
+      setSavingRecord(false);
+    }
   }
 
   const toggleOption = (opt: string) => {
@@ -144,7 +169,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   };
 
   const handleSubmit = () => {
-    if (submitted) return;
+    if (submitted || !isQuestionReady) return;
     let answer = userAnswer;
     if (question.type === 'blank' || question.type === 'short') {
       answer = blankInput.trim() ? [blankInput.trim()] : [];
@@ -153,6 +178,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
     const result = checkAnswer(question, answer);
     submittedAnswerRef.current = answer;
+    closeGuidance();
     setSubmitted(true);
 
     if (isSelfGrade && showAnswerImmediately) {
@@ -167,7 +193,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   };
 
   const handleSelfGrade = (nextStatus: AnswerStatus) => {
-    if (!submitted) return;
+    if (!submitted || savingRecord) return;
     const answer = submittedAnswerRef.current.length > 0
       ? submittedAnswerRef.current
       : blankInput.trim()
@@ -180,6 +206,10 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   };
 
   const handleRedo = () => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
     setUserAnswer([]);
     setBlankInput('');
     setSubmitted(false);
@@ -187,12 +217,28 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     setRecordId(null);
     recordIdRef.current = null;
     submittedAnswerRef.current = [];
+    setSaveError('');
+    setSavingRecord(false);
+    closeGuidance();
     closeExplanation();
   };
 
   const toggleFavorite = async () => {
-    const nowFav = await toggleFavoriteRepo(bankId, question.id);
-    setIsFavorite(nowFav);
+    if (favoriteSaving) return;
+    const previous = isFavorite;
+    setFavoriteSaving(true);
+    setFavoriteError('');
+    setIsFavorite(!previous);
+    try {
+      const nowFav = await toggleFavoriteRepo(bankId, question.id);
+      setIsFavorite(nowFav);
+    } catch (error) {
+      console.error('切换收藏失败:', error);
+      setIsFavorite(previous);
+      setFavoriteError('收藏失败，请重试');
+    } finally {
+      setFavoriteSaving(false);
+    }
   };
 
   const closeExplanation = () => {
@@ -203,7 +249,90 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
     abortRef.current?.abort();
   };
 
+  const closeGuidance = () => {
+    setShowGuidance(false);
+    setGuidanceInput('');
+    setGuidanceLoading(false);
+    setGuidanceError('');
+    guidanceAbortRef.current?.abort();
+  };
+
+  const openGuidance = () => {
+    setShowGuidance(true);
+    if (guidanceMessages.length === 0 && !guidanceLoading) {
+      void sendGuidanceMessage('我完全没思路，先帮我回忆这题考什么知识点。');
+    }
+  };
+
+  const sendGuidanceMessage = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || guidanceLoading) return;
+
+    setShowGuidance(true);
+    setGuidanceInput('');
+    setGuidanceError('');
+    const nextMessages: GuidanceChatMessage[] = [
+      ...guidanceMessages,
+      { role: 'user', content: trimmed },
+      { role: 'assistant', content: '' },
+    ];
+    setGuidanceMessages(nextMessages);
+    setGuidanceLoading(true);
+    guidanceAbortRef.current?.abort();
+    const controller = new AbortController();
+    guidanceAbortRef.current = controller;
+    const timeoutMessage = 'AI 提示响应超时，请稍后重试';
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 45000);
+
+    try {
+      const historyForRequest = nextMessages.slice(0, -1);
+      const finalText = await generateGuidance(
+        question,
+        historyForRequest,
+        textChunk => {
+          setGuidanceMessages(messages => {
+            const next = [...messages];
+            const last = next[next.length - 1];
+            if (last?.role === 'assistant') {
+              next[next.length - 1] = { role: 'assistant', content: textChunk };
+            }
+            return next;
+          });
+        },
+        controller.signal,
+      );
+      if (!finalText.trim()) {
+        throw new Error('AI 没有返回提示内容，请稍后重试');
+      }
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        if (!timedOut) return;
+      }
+      const message = timedOut
+        ? timeoutMessage
+        : err instanceof Error
+          ? err.message
+          : 'AI 提示生成失败';
+      setGuidanceError(message);
+      setGuidanceMessages(messages => messages.filter(message => message.content.trim()));
+    } finally {
+      window.clearTimeout(timeout);
+      if (guidanceAbortRef.current === controller) {
+        guidanceAbortRef.current = null;
+      }
+      setGuidanceLoading(false);
+    }
+  };
+
   const handleAIExplanation = async (forceRefresh = false) => {
+    if (question.explanation && !forceRefresh) {
+      setShowExplanation(true);
+      return;
+    }
     if (!forceRefresh) {
       const cached = await loadCachedExplanation(question.id);
       if (cached) {
@@ -242,7 +371,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
   return (
     <div className="bg-bg-card rounded-2xl border border-border-subtle p-5">
       {/* 头部 */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-text-muted font-mono">{index + 1}/{total}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${getQuestionTypeColor(question.type)}`}>
@@ -254,20 +383,37 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
             </span>
           ))}
         </div>
-        <button onClick={toggleFavorite} className="active:scale-90 transition-transform text-accent">
+        <button
+          onClick={toggleFavorite}
+          disabled={favoriteSaving}
+          className="active:scale-90 transition-transform text-accent disabled:opacity-50"
+          title={isFavorite ? '取消收藏' : '收藏'}
+        >
           <Icon name={isFavorite ? 'star' : 'star-empty'} size={24} />
         </button>
       </div>
+
+      {favoriteError && (
+        <div className="mb-3 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-500">
+          {favoriteError}
+        </div>
+      )}
 
       {/* 题干 */}
       <div className="text-base font-medium text-text-primary mb-4 leading-relaxed whitespace-pre-wrap">
         {question.question}
       </div>
 
+      {!isQuestionReady && (
+        <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+          这道题的数据不完整，暂时无法作答。请检查题库中的答案或选项配置。
+        </div>
+      )}
+
       {/* 选项 */}
       {question.options && (question.type === 'single' || question.type === 'multiple') && (
         <div className="space-y-2 mb-4">
-          {Object.entries(question.options).map(([key, value]) => {
+          {optionEntries.map(([key, value]) => {
             const selected = userAnswer.includes(key);
             const isCorrect = question.answer.includes(key);
             let optionClass = 'border-border-default bg-bg-card hover:border-accent/40';
@@ -292,7 +438,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               <button
                 key={key}
                 onClick={() => toggleOption(key)}
-                disabled={submitted}
+                disabled={submitted || !isQuestionReady}
                 className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-start gap-3 ${optionClass}`}
               >
                 <span className="font-bold text-sm mt-0.5 shrink-0">{key}</span>
@@ -323,7 +469,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               <button
                 key={key}
                 onClick={() => toggleOption(key)}
-                disabled={submitted}
+                disabled={submitted || !isQuestionReady}
                 className={`py-4 rounded-xl border-2 text-base font-medium transition-all flex items-center justify-center gap-2 ${cls}`}
               >
                 <Icon name={key === 'true' ? 'check' : 'x'} size={18} />
@@ -340,7 +486,7 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
           <textarea
             value={blankInput}
             onChange={e => setBlankInput(e.target.value)}
-            disabled={submitted}
+            disabled={submitted || !isQuestionReady}
             placeholder={question.type === 'blank' ? '请输入答案...' : '请输入你的回答...'}
             className="w-full border border-border-default rounded-xl px-4 py-3 text-sm focus:border-accent focus:ring-4 focus:ring-accent/10 focus:outline-none resize-none disabled:bg-bg-secondary bg-bg-card text-text-primary placeholder:text-text-muted transition-all"
             rows={question.type === 'short' ? 4 : 2}
@@ -350,16 +496,27 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
 
       {/* 提交按钮 */}
       {!submitted && (
-        <button
-          onClick={handleSubmit}
-          disabled={
-            (question.type !== 'blank' && question.type !== 'short' && userAnswer.length === 0) ||
-            ((question.type === 'blank' || question.type === 'short') && !blankInput.trim())
-          }
-          className="w-full py-3 bg-accent text-white font-medium rounded-xl active:bg-accent-hover disabled:opacity-40 disabled:active:bg-accent transition-colors"
-        >
-          提交答案
-        </button>
+        <div className="space-y-2">
+          <button
+            onClick={openGuidance}
+            disabled={!isQuestionReady}
+            className="w-full py-3 bg-bg-secondary text-text-secondary border border-border-subtle font-medium rounded-xl active:scale-[0.98] disabled:opacity-40 transition-all flex items-center justify-center gap-2"
+          >
+            <Icon name="messages-square" size={16} />
+            AI 提示
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={
+              !isQuestionReady ||
+              (question.type !== 'blank' && question.type !== 'short' && userAnswer.length === 0) ||
+              ((question.type === 'blank' || question.type === 'short') && !blankInput.trim())
+            }
+            className="w-full py-3 bg-accent text-white font-medium rounded-xl active:bg-accent-hover disabled:opacity-40 disabled:active:bg-accent transition-colors"
+          >
+            提交答案
+          </button>
+        </div>
       )}
 
       {/* 结果 & 解析 */}
@@ -372,13 +529,15 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={() => handleSelfGrade('correct')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] flex items-center gap-1 ${status === 'correct' ? 'bg-emerald-500 text-white' : 'bg-bg-card border border-emerald-500/35 text-emerald-500'}`}
+                  disabled={savingRecord}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-1 ${status === 'correct' ? 'bg-emerald-500 text-white' : 'bg-bg-card border border-emerald-500/35 text-emerald-500'}`}
                 >
                   <Icon name="check" size={14} /> 我答对了
                 </button>
                 <button
                   onClick={() => handleSelfGrade('wrong')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] flex items-center gap-1 ${status === 'wrong' ? 'bg-red-500 text-white' : 'bg-bg-card border border-red-500/35 text-red-500'}`}
+                  disabled={savingRecord}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-1 ${status === 'wrong' ? 'bg-red-500 text-white' : 'bg-bg-card border border-red-500/35 text-red-500'}`}
                 >
                   <Icon name="x" size={14} /> 我答错了
                 </button>
@@ -396,19 +555,28 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
             </div>
           )}
 
+          {saveError && (
+            <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-500">
+              <div>{saveError}</div>
+              <button
+                onClick={() => void saveRecord(status, submittedAnswerRef.current, Date.now())}
+                disabled={savingRecord || status === 'unanswered'}
+                className="mt-2 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {savingRecord ? '保存中...' : '重新保存'}
+              </button>
+            </div>
+          )}
+
           {submitted && (
             <button
               onClick={() => {
-                if (question.explanation) {
-                  setShowExplanation(true);
-                } else {
-                  handleAIExplanation();
-                }
+                handleAIExplanation();
               }}
               className="w-full py-3 bg-accent/10 text-accent border border-accent/25 rounded-xl text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <Icon name="lightbulb" size={16} />
-              {question.explanation ? '查看解析' : aiExplanation ? '查看 AI 解析' : '生成 AI 解析'}
+              AI 解析
             </button>
           )}
 
@@ -491,6 +659,110 @@ export default function QuestionCard({ question, bankId, index, total, onAnswer,
                   {aiLoading && <span className="inline-block w-1.5 h-4 bg-accent/60 ml-0.5 animate-pulse rounded-sm" />}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 答前 AI 提示 */}
+      {showGuidance && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeGuidance}>
+          <div className="absolute inset-0 bg-slate-950/55" />
+          <div
+            className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl h-[70vh] flex flex-col animate-slide-up border-t border-border-subtle"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
+                  <Icon name="messages-square" size={18} className="text-accent" />
+                  AI 答前提示
+                </h3>
+                <p className="mt-0.5 text-xs text-text-muted">只讲思路和知识点，不直接给答案</p>
+              </div>
+              <button onClick={closeGuidance} className="p-1.5 active:bg-bg-secondary rounded-lg">
+                <Icon name="x" size={20} className="text-text-muted" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {guidanceMessages.length === 0 && !guidanceLoading && (
+                <div className="rounded-xl border border-border-subtle bg-bg-secondary/60 px-4 py-3 text-sm text-text-secondary">
+                  可以让 AI 帮你回忆相关知识点、拆题、给排除方向，但它不会直接告诉你答案。
+                </div>
+              )}
+
+              {guidanceMessages.map((message, messageIndex) => (
+                <div
+                  key={`${message.role}-${messageIndex}`}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[86%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                      message.role === 'user'
+                        ? 'bg-accent text-white'
+                        : 'bg-bg-secondary text-text-primary'
+                    }`}
+                  >
+                    {message.role === 'assistant' ? (
+                      <div className="prose prose-sm max-w-none">
+                        <ReactMarkdown>{message.content || '正在组织提示...'}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <span className="whitespace-pre-wrap">{message.content}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {guidanceError && (
+                <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+                  {guidanceError}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border-subtle px-4 py-3 safe-area-bottom">
+              <div className="mb-2 flex gap-2 overflow-x-auto">
+                {['提示一个知识点', '怎么拆题？', '给我一个记忆口诀'].map(prompt => (
+                  <button
+                    key={prompt}
+                    onClick={() => sendGuidanceMessage(prompt)}
+                    disabled={guidanceLoading}
+                    className="shrink-0 rounded-full border border-border-subtle bg-bg-secondary px-3 py-1.5 text-xs text-text-secondary disabled:opacity-50"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={guidanceInput}
+                  onChange={e => setGuidanceInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendGuidanceMessage(guidanceInput);
+                    }
+                  }}
+                  disabled={guidanceLoading}
+                  placeholder="问问思路，不问答案..."
+                  rows={1}
+                  className="min-h-11 flex-1 resize-none rounded-xl border border-border-default bg-bg-primary px-3 py-2.5 text-sm text-text-primary outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:opacity-60"
+                />
+                <button
+                  onClick={() => void sendGuidanceMessage(guidanceInput)}
+                  disabled={guidanceLoading || !guidanceInput.trim()}
+                  className="h-11 w-11 shrink-0 rounded-xl bg-accent text-white disabled:opacity-40 active:scale-[0.97] flex items-center justify-center"
+                  title="发送"
+                >
+                  {guidanceLoading ? (
+                    <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  ) : (
+                    <Icon name="send" size={17} />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

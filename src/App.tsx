@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
 import UpdatePrompt from './components/UpdatePrompt';
 import NetworkStatus from './components/NetworkStatus';
+import ErrorBoundary from './components/ErrorBoundary';
 import HomePage from './pages/HomePage';
 import BanksPage from './pages/BanksPage';
 import ImportPage from './pages/ImportPage';
@@ -33,9 +34,11 @@ function AppLayout() {
 
 export default function App() {
   return (
-    <HashRouter>
-      <AppLayout />
-      <UpdatePrompt />
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <AppLayout />
+        <UpdatePrompt />
+      </HashRouter>
+    </ErrorBoundary>
   );
 }

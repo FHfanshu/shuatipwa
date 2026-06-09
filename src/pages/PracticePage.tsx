@@ -338,6 +338,7 @@ export default function PracticePage() {
       {/* 题目卡片 */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 min-h-0">
         <QuestionCard
+          key={`${currentQuestion.id}:${currentIndex}`}
           question={currentQuestion}
           bankId={bankId!}
           index={currentIndex}

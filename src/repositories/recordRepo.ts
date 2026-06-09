@@ -10,12 +10,12 @@ export async function upsertRecord(
   existingId?: number | null
 ): Promise<number> {
   if (existingId != null) {
-    await db.records.update(existingId, {
+    const updated = await db.records.update(existingId, {
       userAnswer: record.userAnswer,
       status: record.status,
       timestamp: record.timestamp,
     });
-    return existingId;
+    if (updated > 0) return existingId;
   }
   const id = await db.records.add(record);
   return id as number;

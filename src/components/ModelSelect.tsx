@@ -10,12 +10,10 @@ interface ModelSelectProps {
 
 export default function ModelSelect({ models, value, onChange, loading }: ModelSelectProps) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value);
+  const [query, setQuery] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // 外部 value 变化时同步输入框
-  useEffect(() => { setQuery(value); }, [value]);
 
   // 点击外部关闭
   useEffect(() => {
@@ -23,12 +21,13 @@ export default function ModelSelect({ models, value, onChange, loading }: ModelS
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
-        setQuery(value);
+        setQuery('');
+        setIsTyping(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open, value]);
+  }, [open]);
 
   // 过滤列表
   const filtered = useMemo(() => {
@@ -40,28 +39,34 @@ export default function ModelSelect({ models, value, onChange, loading }: ModelS
 
   const handleSelect = (model: string) => {
     onChange(model);
-    setQuery(model);
+    setQuery('');
+    setIsTyping(false);
     setOpen(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (filtered.length === 1 && filtered[0] !== query) {
+      if (filtered.length === 1 && filtered[0] !== value) {
         handleSelect(filtered[0]);
       } else {
-        const trimmed = query.trim();
+        const trimmed = (isTyping ? query : value).trim();
         if (trimmed) {
           onChange(trimmed);
+          setQuery('');
+          setIsTyping(false);
           setOpen(false);
         }
       }
     } else if (e.key === 'Escape') {
       setOpen(false);
-      setQuery(value);
+      setQuery('');
+      setIsTyping(false);
       inputRef.current?.blur();
     }
   };
+
+  const displayValue = isTyping ? query : value;
 
   return (
     <div ref={ref} className="relative">
@@ -70,9 +75,19 @@ export default function ModelSelect({ models, value, onChange, loading }: ModelS
         <input
           ref={inputRef}
           type="text"
-          value={query}
-          onChange={e => { const v = e.target.value; setQuery(v); onChange(v); setOpen(true); }}
-          onFocus={() => setOpen(true)}
+          value={displayValue}
+          onChange={e => {
+            const next = e.target.value;
+            setQuery(next);
+            setIsTyping(true);
+            onChange(next);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            setQuery('');
+            setIsTyping(false);
+            setOpen(true);
+          }}
           onKeyDown={handleKeyDown}
           placeholder={loading ? '获取模型中...' : '输入或选择模型...'}
           disabled={loading}

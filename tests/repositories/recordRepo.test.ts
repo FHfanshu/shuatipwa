@@ -46,6 +46,24 @@ describe('recordRepo', () => {
       expect(records[0].userAnswer).toEqual(['B']);
       expect(records[0].status).toBe('wrong');
     });
+
+    it('inserts a new record when provided id no longer exists', async () => {
+      const id = await upsertRecord(
+        {
+          bankId: 'b1',
+          questionId: 'q1',
+          userAnswer: ['A'],
+          status: 'correct',
+          timestamp: 1000,
+        },
+        999
+      );
+
+      expect(id).not.toBe(999);
+      const records = await getRecordsByBankId('b1');
+      expect(records).toHaveLength(1);
+      expect(records[0].status).toBe('correct');
+    });
   });
 
   describe('getRecordsByBankId', () => {

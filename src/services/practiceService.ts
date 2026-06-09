@@ -33,6 +33,8 @@ interface SavedProgress {
   results: Record<number, AnswerStatus>;
 }
 
+const PROGRESS_PREFIX = 'practice-progress';
+
 /**
  * 加载练习会话：按模式查题 → 恢复 IndexedDB 记录 → 确定起始位置
  */
@@ -60,13 +62,16 @@ export async function loadQuestions(
   options?: { examCount?: number; shuffle?: boolean; typeFilter?: QuestionType }
 ): Promise<Question[]> {
   let qs: Question[];
+  let requestedIds: string[] | null = null;
 
   if (mode === 'wrong') {
     const records = await getRecordsByBankId(bankId);
     const wrongIds = getCurrentWrongQuestionIds(records);
+    requestedIds = wrongIds;
     qs = wrongIds.length > 0 ? await getQuestionsByIds(wrongIds) : [];
   } else if (mode === 'favorite') {
     const favIds = await getFavoriteQuestionIds(bankId);
+    requestedIds = favIds;
     qs = favIds.length > 0 ? await getQuestionsByIds(favIds) : [];
   } else {
     qs = await getQuestionsByBankId(bankId);
@@ -77,7 +82,16 @@ export async function loadQuestions(
     qs = qs.filter(q => q.type === options.typeFilter);
   }
 
-  if (options?.shuffle ?? (mode === 'random' || mode === 'exam')) {
+  if (mode === 'wrong' || mode === 'favorite') {
+    const questionOrder = new Map((requestedIds ?? []).map((id, index) => [id, index]));
+    qs = qs.filter(q => q.bankId === bankId).sort((a, b) => {
+      const aIndex = questionOrder.get(a.id) ?? 0;
+      const bIndex = questionOrder.get(b.id) ?? 0;
+      return aIndex - bIndex;
+    });
+  }
+
+  if ((options?.shuffle ?? (mode === 'random' || mode === 'exam')) && qs.length > 1) {
     qs = shuffleArray(qs);
   }
 
@@ -132,7 +146,7 @@ export async function restoreFromRecords(
 
   // 顺序模式：清除 localStorage 残留（以 IndexedDB 为准）
   if (mode === 'sequential') {
-    localStorage.removeItem(`practice-progress-${bankId}-${mode}`);
+    removeSavedProgress(bankId, mode);
   }
 
   return { questions, results, questionStates, startIndex };
@@ -143,12 +157,21 @@ export async function restoreFromRecords(
  */
 export function loadSavedProgress(bankId: string, mode: PracticeMode): SavedProgress | null {
   if (mode !== 'sequential') return null;
-  const saved = localStorage.getItem(`practice-progress-${bankId}-${mode}`);
+  const key = progressStorageKey(bankId, mode);
+  const saved = safeGetLocalStorage(key);
   if (!saved) return null;
   try {
-    return JSON.parse(saved) as SavedProgress;
+    const parsed = JSON.parse(saved) as Partial<SavedProgress>;
+    if (!parsed || typeof parsed.currentIndex !== 'number' || !parsed.results || typeof parsed.results !== 'object') {
+      safeRemoveLocalStorage(key);
+      return null;
+    }
+    return {
+      currentIndex: Math.max(0, Math.floor(parsed.currentIndex)),
+      results: normalizeSavedResults(parsed.results),
+    };
   } catch {
-    localStorage.removeItem(`practice-progress-${bankId}-${mode}`);
+    safeRemoveLocalStorage(key);
     return null;
   }
 }
@@ -163,8 +186,11 @@ export function saveProgress(
   results: Record<number, AnswerStatus>
 ): void {
   if (mode !== 'sequential') return;
-  const progress: SavedProgress = { currentIndex, results };
-  localStorage.setItem(`practice-progress-${bankId}-${mode}`, JSON.stringify(progress));
+  const progress: SavedProgress = {
+    currentIndex: Math.max(0, Math.floor(currentIndex)),
+    results: normalizeSavedResults(results),
+  };
+  safeSetLocalStorage(progressStorageKey(bankId, mode), JSON.stringify(progress));
 }
 
 /**
@@ -174,11 +200,19 @@ export function computeStats(
   results: Record<number, AnswerStatus>,
   totalQuestions: number
 ): PracticeStats {
-  const entries = Object.values(results);
+  const entries = Object.entries(results)
+    .map(([key, status]) => ({ index: Number(key), status }))
+    .filter(({ index, status }) => (
+      Number.isInteger(index) &&
+      index >= 0 &&
+      index < totalQuestions &&
+      (status === 'correct' || status === 'wrong')
+    ))
+    .map(({ status }) => status);
   const answered = entries.length;
   const correct = entries.filter(r => r === 'correct').length;
   const wrong = entries.filter(r => r === 'wrong').length;
-  const accuracy = totalQuestions > 0 ? Math.round((correct / totalQuestions) * 100) : 0;
+  const accuracy = answered > 0 ? Math.round((correct / answered) * 100) : 0;
   return { answered, correct, wrong, accuracy, isFinished: answered >= totalQuestions };
 }
 
@@ -207,4 +241,48 @@ function determineStartIndex(
     return firstUnanswered ?? total - 1;
   }
   return 0;
+}
+
+function progressStorageKey(bankId: string, mode: PracticeMode): string {
+  return `${PROGRESS_PREFIX}-${bankId}-${mode}`;
+}
+
+function removeSavedProgress(bankId: string, mode: PracticeMode): void {
+  safeRemoveLocalStorage(progressStorageKey(bankId, mode));
+}
+
+function normalizeSavedResults(results: Record<number, AnswerStatus> | Record<string, unknown>): Record<number, AnswerStatus> {
+  const normalized: Record<number, AnswerStatus> = {};
+  for (const [key, value] of Object.entries(results)) {
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0) continue;
+    if (value === 'correct' || value === 'wrong') {
+      normalized[index] = value;
+    }
+  }
+  return normalized;
+}
+
+function safeGetLocalStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetLocalStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Progress is best-effort; IndexedDB records remain the source of truth.
+  }
+}
+
+function safeRemoveLocalStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore unavailable localStorage.
+  }
 }

@@ -10,14 +10,23 @@ export function checkAnswer(
   question: Question,
   userAnswer: string[]
 ): AnswerStatus {
-  if (!userAnswer || userAnswer.length === 0) return 'unanswered';
+  const normalizedUserAnswer = normalizeAnswers(userAnswer);
+  if (normalizedUserAnswer.length === 0) return 'unanswered';
 
-  const correct = question.answer.map(a => a.toLowerCase()).sort();
-  const user = userAnswer.map(a => a.toLowerCase()).sort();
+  const correct = normalizeAnswers(question.answer);
+  const user = normalizedUserAnswer;
 
   if (correct.length !== user.length) return 'wrong';
   for (let i = 0; i < correct.length; i++) {
     if (correct[i] !== user[i]) return 'wrong';
   }
   return 'correct';
+}
+
+function normalizeAnswers(answers: unknown): string[] {
+  if (!Array.isArray(answers)) return [];
+  return answers
+    .map(answer => String(answer).trim().toLowerCase())
+    .filter(Boolean)
+    .sort();
 }

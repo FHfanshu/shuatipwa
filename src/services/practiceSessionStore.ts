@@ -10,13 +10,25 @@ export type PracticeSessionRecord = {
   updatedAt: number;
 };
 
-export async function saveLastPracticeSession(session: Omit<PracticeSessionRecord, 'id'>): Promise<void> {
-  if (session.mode === 'exam') return;
-  await db.practiceSessions.put({ ...session, id: 'last' });
+function scopedSessionId(bankId: string, mode: PracticeMode): string {
+  return `${bankId}:${mode}`;
 }
 
-export async function loadLastPracticeSession(): Promise<PracticeSessionRecord | null> {
-  const record = await db.practiceSessions.get('last');
+export async function saveLastPracticeSession(session: Omit<PracticeSessionRecord, 'id'>): Promise<void> {
+  if (session.mode === 'exam') return;
+  const scoped = { ...session, id: scopedSessionId(session.bankId, session.mode) };
+  await db.transaction('rw', db.practiceSessions, async () => {
+    await db.practiceSessions.put(scoped);
+    await db.practiceSessions.put({ ...session, id: 'last' });
+  });
+}
+
+export async function loadLastPracticeSession(
+  bankId?: string,
+  mode?: PracticeMode
+): Promise<PracticeSessionRecord | null> {
+  const id = bankId && mode ? scopedSessionId(bankId, mode) : 'last';
+  const record = await db.practiceSessions.get(id);
   return record ?? null;
 }
 

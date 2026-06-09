@@ -28,6 +28,7 @@ import {
   Check,
   X,
   HelpCircle,
+  AlertCircle,
   Smartphone,
   Infinity as InfinityIcon,
   Zap,
@@ -38,6 +39,10 @@ import {
   Copy,
   Moon,
   Sun,
+  MessagesSquare,
+  Send,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -78,6 +83,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   check: Check,
   x: X,
   'help-circle': HelpCircle,
+  'alert-circle': AlertCircle,
   smartphone: Smartphone,
   infinite: InfinityIcon,
   zap: Zap,
@@ -88,6 +94,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   copy: Copy,
   moon: Moon,
   sun: Sun,
+  'messages-square': MessagesSquare,
+  send: Send,
+  eye: Eye,
+  'eye-off': EyeOff,
 };
 
 const Icon: FC<IconProps> = ({ name, className = '', size = 20 }) => {

@@ -26,8 +26,8 @@ function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
 
   return (
     <div
-      className="overflow-hidden transition-all duration-300 ease-in-out"
-      style={{ maxHeight: open ? height : 0, opacity: open ? 1 : 0 }}
+      className={`transition-all duration-300 ease-in-out ${open ? 'overflow-visible' : 'overflow-hidden'}`}
+      style={{ maxHeight: open ? Math.max(height, 720) : 0, opacity: open ? 1 : 0 }}
     >
       <div ref={ref}>{children}</div>
     </div>
@@ -40,7 +40,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <div className="px-4 pb-2 pt-5">
         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{title}</span>
       </div>
-      <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden divide-y divide-border-subtle">
+      <div className="bg-bg-card rounded-xl border border-border-subtle divide-y divide-border-subtle">
         {children}
       </div>
     </div>
@@ -111,6 +111,7 @@ export default function SettingsPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [aiExpanded, setAiExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
+  const [showAiKey, setShowAiKey] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ step: string; percent: number } | null>(null);
 
   const { theme, actualTheme, palette, setTheme, setPalette } = useTheme();
@@ -130,27 +131,40 @@ export default function SettingsPage() {
     });
   }, []);
 
-  // 模型列表：endpoint+key 有效时自动拉取
+  // 模型列表：手动拉取，避免输入 API Key 时频繁请求
   const [modelList, setModelList] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!aiEndpoint || !aiKey) { setModelList([]); setModelsLoading(false); return; }
-    setModelsLoading(true);
-    const timer = setTimeout(() => {
-      fetchModels(aiEndpoint, aiKey).then(list => {
-        setModelList(list);
-        setModelsLoading(false);
-      });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [aiEndpoint, aiKey]);
 
   const aiConfigured = Boolean(aiEndpoint && aiKey && aiModel);
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
     setTimeout(() => setToast(null), 2500);
+  };
+
+  const handleFetchModels = async () => {
+    const endpoint = aiEndpoint.trim();
+    const apiKey = aiKey.trim();
+    if (!endpoint || !apiKey) {
+      showToast('error', '请先填写 API 地址和 API Key');
+      return;
+    }
+
+    setModelsLoading(true);
+    try {
+      const list = await fetchModels(endpoint, apiKey);
+      setModelList(list);
+      if (list.length > 0) {
+        showToast('success', `已拉取 ${list.length} 个模型`);
+      } else {
+        showToast('error', '没有拉到模型列表，可手动输入模型名');
+      }
+    } catch (error) {
+      setModelList([]);
+      showToast('error', error instanceof Error ? error.message : '模型列表拉取失败');
+    } finally {
+      setModelsLoading(false);
+    }
   };
 
   const handleExport = async () => {
@@ -278,17 +292,39 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-medium text-text-secondary block mb-1">API Key</label>
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      value={aiKey}
-                      onChange={e => setAiKey(e.target.value)}
-                      placeholder="sk-..."
-                      className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showAiKey ? 'text' : 'password'}
+                        autoComplete="off"
+                        value={aiKey}
+                        onChange={e => setAiKey(e.target.value)}
+                        placeholder="sk-..."
+                        className="w-full border border-border-default rounded-lg py-2 pl-3 pr-10 text-sm bg-bg-secondary text-text-primary placeholder:text-text-muted focus:bg-bg-card focus:border-accent focus:ring-4 focus:ring-accent/10 outline-none transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAiKey(v => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-text-muted transition-colors hover:text-text-secondary active:bg-bg-card"
+                        title={showAiKey ? '隐藏 API Key' : '显示 API Key'}
+                        aria-label={showAiKey ? '隐藏 API Key' : '显示 API Key'}
+                      >
+                        <Icon name={showAiKey ? 'eye-off' : 'eye'} size={16} />
+                      </button>
+                    </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-text-secondary block mb-1">模型名称</label>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-text-secondary">模型名称</label>
+                      <button
+                        type="button"
+                        onClick={handleFetchModels}
+                        disabled={modelsLoading}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-secondary px-2.5 py-1 text-xs font-medium text-text-secondary transition-all hover:text-accent active:scale-[0.98] disabled:opacity-50"
+                      >
+                        <Icon name="refresh-cw" size={12} className={modelsLoading ? 'animate-spin' : ''} />
+                        {modelsLoading ? '拉取中' : '拉取模型'}
+                      </button>
+                    </div>
                     <ModelSelect
                       models={modelList}
                       value={aiModel}

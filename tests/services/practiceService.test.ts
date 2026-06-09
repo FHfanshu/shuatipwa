@@ -74,6 +74,16 @@ describe('loadQuestions', () => {
     expect(qs[0].id).toBe('q0');
   });
 
+  it('favorite 模式按收藏顺序返回题目', async () => {
+    await seedQuestions('b1', 4);
+    await db.favorites.bulkAdd([
+      { bankId: 'b1', questionId: 'q2', timestamp: 1 },
+      { bankId: 'b1', questionId: 'q0', timestamp: 2 },
+    ]);
+    const qs = await loadQuestions('b1', 'favorite');
+    expect(qs.map(q => q.id)).toEqual(['q2', 'q0']);
+  });
+
   it('exam 模式支持 shuffle + 截断', async () => {
     await seedQuestions('b1', 10);
     const qs = await loadQuestions('b1', 'exam', { examCount: 3 });
@@ -159,6 +169,16 @@ describe('computeStats', () => {
     expect(stats.correct).toBe(1);
     expect(stats.wrong).toBe(1);
     expect(stats.isFinished).toBe(false);
+    expect(stats.accuracy).toBe(50);
+  });
+
+  it('忽略 unanswered 和越界结果', () => {
+    const stats = computeStats({ 0: 'correct', 1: 'unanswered', 5: 'wrong' }, 2);
+    expect(stats.answered).toBe(1);
+    expect(stats.correct).toBe(1);
+    expect(stats.wrong).toBe(0);
+    expect(stats.accuracy).toBe(100);
+    expect(stats.isFinished).toBe(false);
   });
 
   it('全部完成', () => {
@@ -191,5 +211,21 @@ describe('localStorage 进度', () => {
     const saved = loadSavedProgress('b1', 'sequential');
     expect(saved).toBeNull();
     expect(localStorage.getItem('practice-progress-b1-sequential')).toBeNull();
+  });
+
+  it('损坏的结构自动清理', () => {
+    localStorage.setItem('practice-progress-b1-sequential', JSON.stringify({ currentIndex: '2', results: null }));
+    const saved = loadSavedProgress('b1', 'sequential');
+    expect(saved).toBeNull();
+    expect(localStorage.getItem('practice-progress-b1-sequential')).toBeNull();
+  });
+
+  it('读取时清理无效结果状态', () => {
+    localStorage.setItem('practice-progress-b1-sequential', JSON.stringify({
+      currentIndex: 2.8,
+      results: { 0: 'correct', 1: 'unanswered', '-1': 'wrong', bad: 'correct' },
+    }));
+    const saved = loadSavedProgress('b1', 'sequential');
+    expect(saved).toEqual({ currentIndex: 2, results: { 0: 'correct' } });
   });
 });
