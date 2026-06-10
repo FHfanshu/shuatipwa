@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type PointerEvent } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type { PracticeMode, QuestionType, AnswerStatus } from '../types';
 import type { QuestionState } from '../services/practiceService';
@@ -17,6 +17,72 @@ import QuestionOverview from '../components/QuestionOverview';
 import Icon from '../components/Icon';
 import type { Question } from '../types';
 
+const OVERVIEW_FAB_SIZE = 48;
+const OVERVIEW_FAB_MARGIN = 12;
+const OVERVIEW_FAB_STORAGE_KEY = 'practice-overview-fab-position';
+
+type OverviewFabPosition = {
+  x: number;
+  y: number;
+};
+
+type OverviewFabDrag = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  moved: boolean;
+};
+
+function clampOverviewFabPosition(position: OverviewFabPosition): OverviewFabPosition {
+  if (typeof window === 'undefined') return position;
+
+  const maxX = Math.max(OVERVIEW_FAB_MARGIN, window.innerWidth - OVERVIEW_FAB_SIZE - OVERVIEW_FAB_MARGIN);
+  const maxY = Math.max(OVERVIEW_FAB_MARGIN, window.innerHeight - OVERVIEW_FAB_SIZE - OVERVIEW_FAB_MARGIN);
+
+  return {
+    x: Math.min(Math.max(position.x, OVERVIEW_FAB_MARGIN), maxX),
+    y: Math.min(Math.max(position.y, OVERVIEW_FAB_MARGIN), maxY),
+  };
+}
+
+function getDefaultOverviewFabPosition(): OverviewFabPosition {
+  if (typeof window === 'undefined') return { x: OVERVIEW_FAB_MARGIN, y: OVERVIEW_FAB_MARGIN };
+
+  return clampOverviewFabPosition({
+    x: window.innerWidth - OVERVIEW_FAB_SIZE - 16,
+    y: window.innerHeight - OVERVIEW_FAB_SIZE - 96,
+  });
+}
+
+function loadOverviewFabPosition(): OverviewFabPosition | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(OVERVIEW_FAB_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<OverviewFabPosition>;
+    if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+      return clampOverviewFabPosition({ x: parsed.x as number, y: parsed.y as number });
+    }
+  } catch {
+    // Ignore corrupt persisted positions and fall back to the default.
+  }
+
+  return null;
+}
+
+function saveOverviewFabPosition(position: OverviewFabPosition) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(OVERVIEW_FAB_STORAGE_KEY, JSON.stringify(position));
+  } catch {
+    // Position persistence is a convenience; dragging should still work without it.
+  }
+}
+
 export default function PracticePage() {
   const { bankId, mode } = useParams<{ bankId: string; mode: PracticeMode }>();
   const navigate = useNavigate();
@@ -33,9 +99,15 @@ export default function PracticePage() {
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [showOverview, setShowOverview] = useState(false);
+  const [questionOverlayOpen, setQuestionOverlayOpen] = useState(false);
+  const [overviewFabPosition, setOverviewFabPosition] = useState<OverviewFabPosition | null>(
+    () => loadOverviewFabPosition() ?? getDefaultOverviewFabPosition()
+  );
   const [restored, setRestored] = useState(false);
   const [questionStates, setQuestionStates] = useState<Map<number, QuestionState>>(new Map());
   const lastSavedRef = useRef<string>('');
+  const overviewFabDragRef = useRef<OverviewFabDrag | null>(null);
+  const suppressOverviewFabClickRef = useRef(false);
 
   // 加载题目 + 恢复进度
   useEffect(() => {
@@ -158,6 +230,19 @@ export default function PracticePage() {
     }
   }, [currentIndex, results, mode, bankId, questions.length, restored]);
 
+  useEffect(() => {
+    const handleResize = () => {
+      setOverviewFabPosition(prev => clampOverviewFabPosition(prev ?? getDefaultOverviewFabPosition()));
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
   const handleAnswer = useCallback((index: number, status: AnswerStatus) => {
     setResults(prev => ({ ...prev, [index]: status }));
   }, []);
@@ -192,6 +277,68 @@ export default function PracticePage() {
   };
   const goPrev = () => {
     if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
+  };
+
+  const handleOverviewFabPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!overviewFabPosition) return;
+
+    overviewFabDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: overviewFabPosition.x,
+      originY: overviewFabPosition.y,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleOverviewFabPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = overviewFabDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      drag.moved = true;
+    }
+
+    setOverviewFabPosition(clampOverviewFabPosition({
+      x: drag.originX + dx,
+      y: drag.originY + dy,
+    }));
+  };
+
+  const finishOverviewFabDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = overviewFabDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+
+    const nextPosition = clampOverviewFabPosition({
+      x: drag.originX + dx,
+      y: drag.originY + dy,
+    });
+
+    setOverviewFabPosition(nextPosition);
+    saveOverviewFabPosition(nextPosition);
+
+    if (drag.moved || Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      suppressOverviewFabClickRef.current = true;
+      window.setTimeout(() => {
+        suppressOverviewFabClickRef.current = false;
+      }, 0);
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    overviewFabDragRef.current = null;
+  };
+
+  const handleOverviewFabClick = () => {
+    if (suppressOverviewFabClickRef.current) return;
+    setShowOverview(true);
   };
 
   const stats = computeStats(results, questions.length);
@@ -391,6 +538,7 @@ export default function PracticePage() {
           savedState={questionStates.get(currentIndex)}
           showAnswerImmediately={mode !== 'exam'}
           allowRedo={mode === 'wrong'}
+          onOverlayOpenChange={setQuestionOverlayOpen}
         />
       </div>
 
@@ -426,12 +574,22 @@ export default function PracticePage() {
       </div>
 
       {/* 悬浮总览按钮 */}
-      <button
-        onClick={() => setShowOverview(true)}
-        className="fixed right-4 bottom-24 z-40 w-12 h-12 bg-accent text-white rounded-full shadow-[0_18px_36px_-18px_rgba(31,111,235,0.9)] active:bg-accent-hover flex items-center justify-center transition-transform active:scale-95"
-      >
-        <Icon name="list" size={22} />
-      </button>
+      {!showOverview && !questionOverlayOpen && (
+        <button
+          type="button"
+          aria-label="打开题目总览"
+          title="题目总览"
+          onClick={handleOverviewFabClick}
+          onPointerDown={handleOverviewFabPointerDown}
+          onPointerMove={handleOverviewFabPointerMove}
+          onPointerUp={finishOverviewFabDrag}
+          onPointerCancel={finishOverviewFabDrag}
+          className="fixed z-30 w-12 h-12 touch-none cursor-grab rounded-full bg-accent text-white shadow-[0_18px_36px_-18px_rgba(31,111,235,0.9)] active:cursor-grabbing active:bg-accent-hover flex items-center justify-center transition-transform active:scale-95"
+          style={overviewFabPosition ? { left: overviewFabPosition.x, top: overviewFabPosition.y } : undefined}
+        >
+          <Icon name="list" size={22} />
+        </button>
+      )}
 
       {/* 题目总览面板 */}
       {showOverview && (

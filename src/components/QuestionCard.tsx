@@ -32,9 +32,10 @@ interface Props {
   };
   showAnswerImmediately?: boolean;
   allowRedo?: boolean;
+  onOverlayOpenChange?: (open: boolean) => void;
 }
 
-export default function QuestionCard({ question, bankId, index, total, counterText, onAnswer, onAutoAdvance, onStateChange, onStateReset, savedState, showAnswerImmediately = true, allowRedo }: Props) {
+export default function QuestionCard({ question, bankId, index, total, counterText, onAnswer, onAutoAdvance, onStateChange, onStateReset, savedState, showAnswerImmediately = true, allowRedo, onOverlayOpenChange }: Props) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteSaving, setFavoriteSaving] = useState(false);
   const [favoriteError, setFavoriteError] = useState('');
@@ -76,6 +77,7 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
   const [submitted, setSubmitted] = useState(init.submitted);
   const [status, setStatus] = useState(init.status);
   const [recordId, setRecordId] = useState(init.recordId);
+  const explanationOverlayOpen = (showExplanation && Boolean(question.explanation)) || Boolean(aiExplanation || aiLoading || aiError);
 
   const optionEntries = useMemo(() => (
     question.options ? Object.entries(question.options).filter(([, value]) => String(value).trim()) : []
@@ -165,6 +167,14 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
       guidanceAbortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    onOverlayOpenChange?.(explanationOverlayOpen);
+  }, [explanationOverlayOpen, onOverlayOpenChange]);
+
+  useEffect(() => {
+    return () => onOverlayOpenChange?.(false);
+  }, [onOverlayOpenChange]);
 
   async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number) {
     setSavingRecord(true);
@@ -641,8 +651,8 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
       )}
 
       {/* 解析悬浮窗 */}
-      {showExplanation && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeExplanation}>
+      {showExplanation && question.explanation && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={closeExplanation}>
           <div className="absolute inset-0 bg-slate-950/55" />
           <div
             className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl h-[60vh] flex flex-col animate-slide-up border-t border-border-subtle"
@@ -668,7 +678,7 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
 
       {/* AI 解析悬浮窗 */}
       {(aiExplanation || aiLoading || aiError) && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeExplanation}>
+        <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={closeExplanation}>
           <div className="absolute inset-0 bg-slate-950/55" />
           <div
             className="relative bg-bg-card rounded-t-2xl w-full max-w-3xl h-[60vh] flex flex-col animate-slide-up border-t border-border-subtle"
