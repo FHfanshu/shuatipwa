@@ -467,6 +467,7 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
                 key={key}
                 onClick={() => toggleOption(key)}
                 disabled={submitted || !isQuestionReady}
+                aria-label={`${key}. ${value}`}
                 className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-start gap-3 ${optionClass}`}
               >
                 <span className="font-bold text-sm mt-0.5 shrink-0">{key}</span>
