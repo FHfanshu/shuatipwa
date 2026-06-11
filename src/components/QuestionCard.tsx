@@ -50,8 +50,6 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
   const [guidanceLoading, setGuidanceLoading] = useState(false);
   const [guidanceError, setGuidanceError] = useState('');
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isRestoringRef = useRef(false);
-  const shouldAutoAdvanceRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const guidanceAbortRef = useRef<AbortController | null>(null);
   const recordIdRef = useRef<number | null>(null);
@@ -120,23 +118,6 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
     recordIdRef.current = init.recordId;
   }, [init]);
 
-  // Auto-advance only after a fresh correct answer, not when revisiting restored state.
-  useEffect(() => {
-    if (isRestoringRef.current) {
-      isRestoringRef.current = false;
-      return;
-    }
-    if (submitted && status === 'correct' && showAnswerImmediately && onAutoAdvance && shouldAutoAdvanceRef.current) {
-      shouldAutoAdvanceRef.current = false;
-      autoAdvanceTimerRef.current = setTimeout(() => {
-        onAutoAdvance();
-      }, 650);
-      return () => {
-        if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
-      };
-    }
-  }, [submitted, status, showAnswerImmediately, onAutoAdvance]);
-
   // Notify parent of state changes
   useEffect(() => {
     if (onStateChange && (submitted || userAnswer.length > 0 || blankInput)) {
@@ -176,7 +157,15 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
     return () => onOverlayOpenChange?.(false);
   }, [onOverlayOpenChange]);
 
-  async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number) {
+  function scheduleAutoAdvance(nextStatus: AnswerStatus) {
+    if (nextStatus !== 'correct' || !showAnswerImmediately || !onAutoAdvance) return;
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    autoAdvanceTimerRef.current = setTimeout(() => {
+      onAutoAdvance();
+    }, 650);
+  }
+
+  async function saveRecord(nextStatus: AnswerStatus, answer: string[], timestamp: number): Promise<boolean> {
     setSavingRecord(true);
     setSaveError('');
     try {
@@ -186,9 +175,11 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
       );
       recordIdRef.current = nextId;
       setRecordId(nextId);
+      return true;
     } catch (error) {
       console.error('保存做题记录失败:', error);
       setSaveError('记录保存失败，请检查浏览器存储权限后重试');
+      return false;
     } finally {
       setSavingRecord(false);
     }
@@ -216,19 +207,20 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
 
     const result = checkAnswer(question, answer);
     submittedAnswerRef.current = answer;
-    shouldAutoAdvanceRef.current = result === 'correct';
     closeGuidance();
     setSubmitted(true);
 
     if (isSelfGrade && showAnswerImmediately) {
-      shouldAutoAdvanceRef.current = false;
       setStatus('unanswered');
       return;
     }
 
     setStatus(result);
-    void saveRecord(result, answer, new Date().getTime());
-    onAnswer?.(result);
+    void saveRecord(result, answer, new Date().getTime()).then(saved => {
+      if (!saved) return;
+      onAnswer?.(result);
+      scheduleAutoAdvance(result);
+    });
 
   };
 
@@ -239,10 +231,12 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
       : blankInput.trim()
         ? [blankInput.trim()]
         : userAnswer;
-    shouldAutoAdvanceRef.current = nextStatus === 'correct';
     setStatus(nextStatus);
-    void saveRecord(nextStatus, answer, new Date().getTime());
-    onAnswer?.(nextStatus);
+    void saveRecord(nextStatus, answer, new Date().getTime()).then(saved => {
+      if (!saved) return;
+      onAnswer?.(nextStatus);
+      scheduleAutoAdvance(nextStatus);
+    });
 
   };
 
@@ -260,7 +254,6 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
     submittedAnswerRef.current = [];
     setSaveError('');
     setSavingRecord(false);
-    shouldAutoAdvanceRef.current = false;
     closeGuidance();
     closeExplanation();
     onStateReset?.();
@@ -612,7 +605,11 @@ export default function QuestionCard({ question, bankId, index, total, counterTe
             <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-500">
               <div>{saveError}</div>
               <button
-                onClick={() => void saveRecord(status, submittedAnswerRef.current, Date.now())}
+                onClick={() => void saveRecord(status, submittedAnswerRef.current, Date.now()).then(saved => {
+                  if (!saved) return;
+                  onAnswer?.(status);
+                  scheduleAutoAdvance(status);
+                })}
                 disabled={savingRecord || status === 'unanswered'}
                 className="mt-2 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
