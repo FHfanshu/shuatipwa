@@ -9,7 +9,6 @@ import {
   saveProgress,
   computeStats,
   restoreFromRecords,
-  filterUnansweredQuestions,
 } from '../services/practiceService';
 import { saveLastPracticeSession, loadLastPracticeSession } from '../services/practiceSessionStore';
 import { getQuestionsByIds } from '../repositories/questionRepo';
@@ -128,8 +127,9 @@ export default function PracticePage() {
           return;
         }
 
-        // resume=1：恢复上次会话的题目顺序，失败则 fallback
-        if (resume) {
+        // resume=1：恢复上次会话的题目顺序，失败则 fallback。
+        // random 模式总是重建完整题单，避免旧版本保存的“未做题子集”让历史记录看起来消失。
+        if (resume && mode !== 'random') {
           try {
             const scopedLast = await loadLastPracticeSession(bankId, mode, typeFilter ?? null);
             const globalLast = scopedLast ? null : await loadLastPracticeSession();
@@ -147,33 +147,9 @@ export default function PracticePage() {
               const qs = await getQuestionsByIds(last.questionIds);
               if (canceled) return;
               const idToQ = new Map(qs.map(q => [q.id, q]));
-              let ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
+              const ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
               if (ordered.length > 0) {
-                let restoredIndex = Math.min(Math.max(0, last.currentIndex), ordered.length - 1);
-
-                if (mode === 'random') {
-                  const activeQuestionId = ordered[restoredIndex]?.id;
-                  ordered = await filterUnansweredQuestions(bankId, ordered);
-                  if (canceled) return;
-
-                  if (ordered.length === 0) {
-                    setQuestions([]);
-                    setResults({});
-                    setQuestionStates(new Map());
-                    setCurrentIndex(0);
-                    setRestored(true);
-                    setLoading(false);
-                    lastSavedRef.current = '';
-                    return;
-                  }
-
-                  const activeIndex = activeQuestionId
-                    ? ordered.findIndex(q => q.id === activeQuestionId)
-                    : -1;
-                  restoredIndex = activeIndex >= 0
-                    ? activeIndex
-                    : Math.min(restoredIndex, ordered.length - 1);
-                }
+                const restoredIndex = Math.min(Math.max(0, last.currentIndex), ordered.length - 1);
 
                 const restored = await restoreFromRecords(bankId, mode, ordered);
                 if (canceled) return;
@@ -212,7 +188,6 @@ export default function PracticePage() {
           const saved = loadSavedProgress(bankId, mode);
           if (!canceled && saved && saved.currentIndex < session.questions.length) {
             setCurrentIndex(saved.currentIndex);
-            setResults(saved.results);
           }
         }
       } catch (err) {
@@ -295,15 +270,36 @@ export default function PracticePage() {
     });
   }, []);
 
+  const isAnswered = useCallback((index: number) => {
+    const status = results[index];
+    return status === 'correct' || status === 'wrong';
+  }, [results]);
+
+  const findUnansweredIndex = useCallback((fromIndex: number, direction: 1 | -1): number | null => {
+    for (let i = fromIndex + direction; i >= 0 && i < questions.length; i += direction) {
+      if (!isAnswered(i)) return i;
+    }
+    return null;
+  }, [isAnswered, questions.length]);
+
+  const moveBy = useCallback((direction: 1 | -1) => {
+    setCurrentIndex(prev => {
+      if (mode === 'random') {
+        return findUnansweredIndex(prev, direction) ?? prev;
+      }
+      return Math.min(Math.max(prev + direction, 0), questions.length - 1);
+    });
+  }, [findUnansweredIndex, mode, questions.length]);
+
   const handleAutoAdvance = useCallback(() => {
-    setCurrentIndex(prev => Math.min(prev + 1, questions.length - 1));
-  }, [questions.length]);
+    moveBy(1);
+  }, [moveBy]);
 
   const goNext = () => {
-    if (currentIndex < questions.length - 1) setCurrentIndex(prev => prev + 1);
+    moveBy(1);
   };
   const goPrev = () => {
-    if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
+    moveBy(-1);
   };
 
   const handleOverviewFabPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
@@ -371,10 +367,14 @@ export default function PracticePage() {
   const stats = computeStats(results, questions.length);
   const positionText = `${currentIndex + 1}/${questions.length}`;
   const answeredText = `${stats.answered}/${questions.length}`;
-  const progressRatio = questions.length > 0
-    ? (mode === 'random' ? stats.answered : currentIndex + 1) / questions.length
-    : 0;
-  const progressText = mode === 'random' ? `已练 ${answeredText}` : positionText;
+  const progressRatio = questions.length > 0 ? stats.answered / questions.length : 0;
+  const progressText = mode === 'exam' ? positionText : `已练 ${answeredText}`;
+  const prevDisabled = mode === 'random'
+    ? findUnansweredIndex(currentIndex, -1) === null
+    : currentIndex === 0;
+  const nextDisabled = mode === 'random'
+    ? findUnansweredIndex(currentIndex, 1) === null
+    : currentIndex >= questions.length - 1;
   const TYPE_LABELS: Record<string, string> = { single: '单选', multiple: '多选', judge: '判断', blank: '填空', short: '简答' };
   const typeLabel = typeFilter ? TYPE_LABELS[typeFilter] : '';
   const modeLabel = mode === 'exam' ? '考试中' : mode === 'wrong' ? '错题本' : mode === 'favorite' ? '收藏' : '练习';
@@ -454,7 +454,7 @@ export default function PracticePage() {
     );
   }
 
-  if (questions.length === 0) {
+  if (questions.length === 0 || (mode === 'random' && stats.isFinished)) {
     const emptyIcon = mode === 'wrong' ? 'check-circle' : mode === 'favorite' ? 'star-empty' : mode === 'random' ? 'shuffle' : 'file-text';
     const emptyTitle = mode === 'wrong'
       ? '没有错题，太棒了！'
@@ -587,7 +587,7 @@ export default function PracticePage() {
       <div className="bg-bg-card border-t border-border-subtle px-4 pt-3 pb-5 flex items-center gap-3 shrink-0 safe-area-bottom">
         <button
           onClick={goPrev}
-          disabled={currentIndex === 0}
+          disabled={prevDisabled}
           className="px-4 py-2.5 bg-bg-secondary text-text-secondary rounded-xl text-sm font-medium disabled:opacity-30 active:opacity-80 flex items-center gap-1"
         >
           <Icon name="arrow-left" size={14} /> 上一题
@@ -607,7 +607,7 @@ export default function PracticePage() {
 
         <button
           onClick={goNext}
-          disabled={currentIndex >= questions.length - 1}
+          disabled={nextDisabled}
           className="px-4 py-2.5 bg-accent text-white rounded-xl text-sm font-medium disabled:opacity-30 active:bg-accent-hover flex items-center gap-1"
         >
           下一题 <Icon name="arrow-right" size={14} />

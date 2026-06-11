@@ -90,7 +90,7 @@ describe('loadQuestions', () => {
     expect(qs).toHaveLength(3);
   });
 
-  it('random 模式排除已做过的题目', async () => {
+  it('random 模式保留完整题单，进度由 DB 记录恢复', async () => {
     await seedQuestions('b1', 5);
     await seedRecords('b1', [
       { questionId: 'q1', status: 'correct', timestamp: 1 },
@@ -100,10 +100,8 @@ describe('loadQuestions', () => {
     const qs = await loadQuestions('b1', 'random');
     const ids = qs.map(q => q.id);
 
-    expect(qs).toHaveLength(3);
-    expect(ids).not.toContain('q1');
-    expect(ids).not.toContain('q3');
-    expect(new Set(ids)).toEqual(new Set(['q0', 'q2', 'q4']));
+    expect(qs).toHaveLength(5);
+    expect(new Set(ids)).toEqual(new Set(['q0', 'q1', 'q2', 'q3', 'q4']));
   });
 });
 
@@ -149,15 +147,28 @@ describe('restoreFromRecords', () => {
     expect(session.startIndex).toBe(2);
   });
 
-  it('wrong 模式不恢复历史结果和题目状态（允许重新作答）', async () => {
+  it('wrong 模式恢复 DB 结果但不恢复题目状态（允许重新作答）', async () => {
     const qs = await seedQuestions('b1', 2);
     await seedRecords('b1', [
       { questionId: 'q0', status: 'wrong', timestamp: 1 },
     ]);
     const session = await restoreFromRecords('b1', 'wrong', qs);
     expect(session.questionStates.size).toBe(0);
-    expect(session.results).toEqual({});
+    expect(session.results[0]).toBe('wrong');
     expect(session.startIndex).toBe(0);
+  });
+
+  it('random 模式跳到第一道未做题', async () => {
+    const qs = await seedQuestions('b1', 4);
+    await seedRecords('b1', [
+      { questionId: 'q0', status: 'correct', timestamp: 1 },
+      { questionId: 'q1', status: 'wrong', timestamp: 2 },
+    ]);
+
+    const session = await restoreFromRecords('b1', 'random', qs);
+    expect(session.results[0]).toBe('correct');
+    expect(session.results[1]).toBe('wrong');
+    expect(session.startIndex).toBe(2);
   });
 
   it('只保留每题最新记录', async () => {
