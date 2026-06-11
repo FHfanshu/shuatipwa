@@ -236,7 +236,10 @@ function BankCard({
   onDelete: () => void;
 }) {
   const stats = useMemo(() => {
-    const bankRecords = records?.filter(record => record.bankId === bank.id) ?? [];
+    const bankRecords = records?.filter(record => (
+      record.bankId === bank.id &&
+      (record.status === 'correct' || record.status === 'wrong')
+    )) ?? [];
     const correct = bankRecords.filter(record => record.status === 'correct').length;
     const wrong = bankRecords.filter(record => record.status === 'wrong').length;
     const uniqueAnswered = new Set(bankRecords.map(record => record.questionId)).size;

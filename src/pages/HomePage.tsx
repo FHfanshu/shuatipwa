@@ -46,13 +46,14 @@ export default function HomePage() {
 
   const homeStats = useMemo(() => {
     const totalQuestions = banks?.reduce((sum, bank) => sum + bank.questionCount, 0) ?? 0;
-    const correct = records?.filter(r => r.status === 'correct').length ?? 0;
-    const wrong = records?.filter(r => r.status === 'wrong').length ?? 0;
-    const answered = new Set(records?.map(r => `${r.bankId}:${r.questionId}`) ?? []).size;
+    const completedRecords = records?.filter(r => r.status === 'correct' || r.status === 'wrong') ?? [];
+    const correct = completedRecords.filter(r => r.status === 'correct').length;
+    const wrong = completedRecords.filter(r => r.status === 'wrong').length;
+    const answered = new Set(completedRecords.map(r => `${r.bankId}:${r.questionId}`)).size;
     const accuracy = correct + wrong > 0 ? Math.round((correct / (correct + wrong)) * 100) : null;
 
-    const timestamps = records?.map(r => r.timestamp).filter(Boolean) as number[] | undefined;
-    const daysSinceStart = timestamps && timestamps.length > 0
+    const timestamps = completedRecords.map(r => r.timestamp).filter(Boolean);
+    const daysSinceStart = timestamps.length > 0
       ? Math.max(1, Math.ceil((mountTime - Math.min(...timestamps)) / 86400000))
       : 0;
 
@@ -347,7 +348,10 @@ function BankRow({
   onClick: () => void;
 }) {
   const stats = useMemo(() => {
-    const bankRecords = records?.filter(r => r.bankId === bank.id) ?? [];
+    const bankRecords = records?.filter(r => (
+      r.bankId === bank.id &&
+      (r.status === 'correct' || r.status === 'wrong')
+    )) ?? [];
     const uniqueAnswered = new Set(bankRecords.map(r => r.questionId)).size;
     const progress = bank.questionCount > 0 ? Math.round((uniqueAnswered / bank.questionCount) * 100) : 0;
     return { uniqueAnswered, progress };
