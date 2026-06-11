@@ -11,6 +11,7 @@ import { BUILD_INFO, formatBuildTime } from '../utils/buildInfo';
 import { AI_PROMPT } from '../utils/aiPrompt';
 import { getAIConfig, saveAIConfig } from '../repositories/settingsRepo';
 import { fetchModels } from '../services/aiService';
+import { fetchLatestVersion, applyUpdate } from '../services/versionService';
 import ModelSelect from '../components/ModelSelect';
 
 function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
@@ -112,6 +113,8 @@ export default function SettingsPage() {
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ step: string; percent: number } | null>(null);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const { theme, actualTheme, palette, setTheme, setPalette } = useTheme();
 
@@ -489,17 +492,32 @@ export default function SettingsPage() {
               v{BUILD_INFO.version} · {BUILD_INFO.commitShort}
             </span>
             <button
-              onClick={() => {
+              onClick={async () => {
+                if (latestVersion) {
+                  showToast('success', `正在更新到 v${latestVersion}...`);
+                  await applyUpdate();
+                  return;
+                }
+                if (checking) return;
+                setChecking(true);
                 showToast('success', '正在检查更新...');
-                window.setTimeout(() => {
-                  window.location.reload();
-                }, 350);
+                const latest = await fetchLatestVersion();
+                setChecking(false);
+                if (latest && latest !== BUILD_INFO.version) {
+                  setLatestVersion(latest);
+                  showToast('success', `发现新版本 v${latest}`);
+                } else {
+                  showToast('success', '已是最新版本');
+                }
               }}
-              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-text-muted active:bg-bg-secondary"
-              title="检查并刷新应用"
+              disabled={checking}
+              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs active:bg-bg-secondary ${
+                latestVersion ? 'text-accent font-medium' : 'text-text-muted'
+              }`}
+              title={latestVersion ? `点击更新到 v${latestVersion}` : '检查并刷新应用'}
             >
-              <Icon name="refresh-cw" size={13} />
-              检查更新
+              <Icon name={latestVersion ? 'download' : 'refresh-cw'} size={13} />
+              {checking ? '检查中...' : latestVersion ? `v${latestVersion} → 更新` : '检查更新'}
             </button>
           </div>
           <div className="text-[11px] text-text-muted/70">
