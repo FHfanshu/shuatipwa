@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:file-lines": "node scripts/check-file-lines.mjs",
+    "check:import-dag": "node scripts/check-import-dag.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm run test:run && npm run build",
+    "check": "npm run check:file-lines && npm run check:import-dag && npm run lint && npm run typecheck && npm run test:run && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -31,6 +33,9 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

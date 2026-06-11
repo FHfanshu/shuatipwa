@@ -4,7 +4,6 @@ import type { PracticeMode, QuestionType, AnswerStatus } from '../types';
 import type { QuestionState } from '../services/practiceService';
 import {
   loadPracticeSession,
-  loadQuestions,
   loadSavedProgress,
   saveProgress,
   computeStats,
@@ -83,18 +82,25 @@ function saveOverviewFabPosition(position: OverviewFabPosition) {
   }
 }
 
+function parsePositiveInt(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
 export default function PracticePage() {
   const { bankId, mode } = useParams<{ bankId: string; mode: PracticeMode }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resume = searchParams.get('resume') === '1';
   const typeFilter = (searchParams.get('type') as QuestionType | null) ?? undefined;
+  const examCount = parsePositiveInt(searchParams.get('count'));
+  const randomCount = parsePositiveInt(searchParams.get('randomCount'));
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState<Record<number, AnswerStatus>>({});
-  const [examCount, setExamCount] = useState(50);
-  const [examStarted, setExamStarted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -119,14 +125,6 @@ export default function PracticePage() {
       setError(null);
 
       try {
-        if (mode === 'exam' && !examStarted) {
-          const qs = await loadQuestions(bankId, mode, { typeFilter });
-          if (canceled) return;
-          setQuestions(qs);
-          setLoading(false);
-          return;
-        }
-
         // resume=1：恢复上次会话的题目顺序，失败则 fallback。
         // random 模式总是重建完整题单，避免旧版本保存的“未做题子集”让历史记录看起来消失。
         if (resume && mode !== 'random') {
@@ -171,6 +169,7 @@ export default function PracticePage() {
 
         const session = await loadPracticeSession(bankId, mode, {
           examCount: mode === 'exam' ? examCount : undefined,
+          randomCount: mode === 'random' ? randomCount : undefined,
           typeFilter,
         });
         if (canceled) return;
@@ -206,11 +205,17 @@ export default function PracticePage() {
     return () => {
       canceled = true;
     };
-  }, [bankId, mode, examStarted, examCount, resume, typeFilter, retryCount]);
+  }, [bankId, mode, examCount, randomCount, resume, typeFilter, retryCount]);
 
   // 保存 last practice session（非考试模式）
   useEffect(() => {
-    if (!bankId || !mode || mode === 'exam' || questions.length === 0 || !restored) return;
+    if (
+      !bankId ||
+      !mode ||
+      mode === 'exam' ||
+      questions.length === 0 ||
+      !restored
+    ) return;
     void saveLastPracticeSession({
       bankId,
       mode,
@@ -380,52 +385,6 @@ export default function PracticePage() {
   const modeLabel = mode === 'exam' ? '考试中' : mode === 'wrong' ? '错题本' : mode === 'favorite' ? '收藏' : '练习';
   const modeIcon = mode === 'exam' ? 'exam' : mode === 'wrong' ? 'x-circle' : mode === 'favorite' ? 'star' : 'book';
 
-  // 考试模式：选择题量
-  if (mode === 'exam' && !examStarted) {
-    const maxCount = questions.length;
-    const examOptions = Array.from(new Set(
-      [20, 50, 100].filter(n => n < maxCount).concat(maxCount > 0 ? [maxCount] : [])
-    ));
-    return (
-      <div className="px-4 pt-4 pb-8">
-        <button onClick={() => navigate(-1)} className="text-accent text-sm mb-4 flex items-center gap-1">
-          <Icon name="arrow-left" size={16} /> 返回
-        </button>
-        <h1 className="text-2xl font-bold text-text-primary mb-2 flex items-center gap-2">
-          <Icon name="exam" size={28} className="text-accent" /> 模拟考试
-        </h1>
-        <p className="text-sm text-text-secondary mb-6">题库共 {maxCount} 题，选择考试题数</p>
-
-        <div className="space-y-3">
-          {examOptions.length === 0 && (
-            <div className="rounded-xl border border-border-subtle bg-bg-card p-4 text-sm text-text-secondary">
-              题库为空，无法开始考试。
-            </div>
-          )}
-          {examOptions.map(n => (
-            <button
-              key={n}
-              onClick={() => { setExamCount(n); setExamStarted(true); }}
-              className="w-full py-4 bg-bg-card border-2 border-border-default rounded-xl text-left px-5 hover:border-accent active:bg-accent/10 transition-colors"
-            >
-              <div className="font-medium text-text-primary">{n} 题</div>
-              <div className="text-xs text-text-secondary mt-0.5">
-                {n === maxCount ? '全部题目' : `随机抽取 ${n} 题`}
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-8 bg-accent/10 border border-accent/25 rounded-xl p-4">
-          <div className="text-sm text-text-secondary flex items-start gap-2">
-            <Icon name="info" size={16} className="mt-0.5 shrink-0" />
-            <span>考试模式下，答完所有题后才会显示成绩。答错的题会自动加入错题本。</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -454,7 +413,7 @@ export default function PracticePage() {
     );
   }
 
-  if (questions.length === 0 || (mode === 'random' && stats.isFinished)) {
+  if (questions.length === 0) {
     const emptyIcon = mode === 'wrong' ? 'check-circle' : mode === 'favorite' ? 'star-empty' : mode === 'random' ? 'shuffle' : 'file-text';
     const emptyTitle = mode === 'wrong'
       ? '没有错题，太棒了！'

@@ -36,6 +36,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check file line limits
+        run: npm run check:file-lines
+
+      - name: Check import graph
+        run: npm run check:import-dag
+
       - name: Lint
         run: npm run lint
 

@@ -8,7 +8,7 @@ import {
   saveProgress,
 } from '../../src/services/practiceService';
 import { db } from '../../src/db';
-import type { Question } from '../../src/types';
+import type { AnswerStatus, Question } from '../../src/types';
 
 // 辅助：往 db 塞题目
 async function seedQuestions(bankId: string, count: number): Promise<Question[]> {
@@ -29,7 +29,7 @@ async function seedQuestions(bankId: string, count: number): Promise<Question[]>
 }
 
 // 辅助：往 db 塞做题记录
-async function seedRecords(bankId: string, records: Array<{ questionId: string; status: 'correct' | 'wrong'; timestamp: number }>) {
+async function seedRecords(bankId: string, records: Array<{ questionId: string; status: AnswerStatus; timestamp: number }>) {
   for (const r of records) {
     await db.records.add({
       bankId,
@@ -102,6 +102,59 @@ describe('loadQuestions', () => {
 
     expect(qs).toHaveLength(5);
     expect(new Set(ids)).toEqual(new Set(['q0', 'q1', 'q2', 'q3', 'q4']));
+  });
+
+  it('randomCount 只从未做题中随机抽取指定题数', async () => {
+    await seedQuestions('b1', 6);
+    await seedRecords('b1', [
+      { questionId: 'q1', status: 'correct', timestamp: 1 },
+      { questionId: 'q3', status: 'wrong', timestamp: 2 },
+    ]);
+
+    const qs = await loadQuestions('b1', 'random', { randomCount: 2 });
+    const ids = qs.map(q => q.id);
+
+    expect(qs).toHaveLength(2);
+    expect(ids).not.toContain('q1');
+    expect(ids).not.toContain('q3');
+  });
+
+  it('randomCount 按每题最新记录判断未做题', async () => {
+    await seedQuestions('b1', 5);
+    await seedRecords('b1', [
+      { questionId: 'q0', status: 'wrong', timestamp: 1 },
+      { questionId: 'q0', status: 'unanswered', timestamp: 2 },
+      { questionId: 'q1', status: 'unanswered', timestamp: 1 },
+      { questionId: 'q2', status: 'correct', timestamp: 1 },
+      { questionId: 'q3', status: 'wrong', timestamp: 1 },
+    ]);
+
+    const qs = await loadQuestions('b1', 'random', { randomCount: 5 });
+    const ids = qs.map(q => q.id);
+
+    expect(new Set(ids)).toEqual(new Set(['q0', 'q1', 'q4']));
+    expect(ids).not.toContain('q2');
+    expect(ids).not.toContain('q3');
+  });
+
+  it('randomCount 在题型过滤后只抽对应题型的未做题', async () => {
+    const singleQuestions = await seedQuestions('b1', 3);
+    const judgeQuestions = singleQuestions.map((question, index) => ({
+      ...question,
+      id: `j${index}`,
+      type: 'judge' as const,
+      answer: ['true'],
+    }));
+    await db.questions.bulkAdd(judgeQuestions);
+    await seedRecords('b1', [
+      { questionId: 'q0', status: 'correct', timestamp: 1 },
+      { questionId: 'j0', status: 'wrong', timestamp: 1 },
+    ]);
+
+    const qs = await loadQuestions('b1', 'random', { randomCount: 10, typeFilter: 'judge' });
+
+    expect(qs.map(q => q.id).sort()).toEqual(['j1', 'j2']);
+    expect(qs.every(q => q.type === 'judge')).toBe(true);
   });
 });
 

@@ -41,7 +41,7 @@ const PROGRESS_PREFIX = 'practice-progress';
 export async function loadPracticeSession(
   bankId: string,
   mode: PracticeMode,
-  options?: { examCount?: number; shuffle?: boolean; typeFilter?: QuestionType }
+  options?: { examCount?: number; randomCount?: number; shuffle?: boolean; typeFilter?: QuestionType }
 ): Promise<PracticeSession> {
   const questions = await loadQuestions(bankId, mode, options);
 
@@ -59,7 +59,7 @@ export async function loadPracticeSession(
 export async function loadQuestions(
   bankId: string,
   mode: PracticeMode,
-  options?: { examCount?: number; shuffle?: boolean; typeFilter?: QuestionType }
+  options?: { examCount?: number; randomCount?: number; shuffle?: boolean; typeFilter?: QuestionType }
 ): Promise<Question[]> {
   let qs: Question[];
   let requestedIds: string[] | null = null;
@@ -93,6 +93,11 @@ export async function loadQuestions(
 
   if ((options?.shuffle ?? (mode === 'random' || mode === 'exam')) && qs.length > 1) {
     qs = shuffleArray(qs);
+  }
+
+  if (mode === 'random' && options?.randomCount) {
+    qs = await filterUnansweredQuestions(bankId, qs);
+    qs = qs.slice(0, options.randomCount);
   }
 
   if (mode === 'exam' && options?.examCount) {
@@ -149,6 +154,18 @@ export async function restoreFromRecords(
   }
 
   return { questions, results, questionStates, startIndex };
+}
+
+async function filterUnansweredQuestions(bankId: string, questions: Question[]): Promise<Question[]> {
+  if (questions.length === 0) return questions;
+
+  const records = await getRecordsByBankId(bankId);
+  if (records.length === 0) return questions;
+
+  const answeredIds = getAnsweredQuestionIds(records);
+  if (answeredIds.size === 0) return questions;
+
+  return questions.filter(q => !answeredIds.has(q.id));
 }
 
 /**
@@ -230,6 +247,16 @@ function getLatestRecords(records: PracticeRecord[]): Map<string, PracticeRecord
     }
   }
   return latest;
+}
+
+function getAnsweredQuestionIds(records: PracticeRecord[]): Set<string> {
+  const answeredIds = new Set<string>();
+  for (const [questionId, record] of getLatestRecords(records)) {
+    if (record.status === 'correct' || record.status === 'wrong') {
+      answeredIds.add(questionId);
+    }
+  }
+  return answeredIds;
 }
 
 function determineStartIndex(

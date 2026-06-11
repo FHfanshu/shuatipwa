@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../db';
@@ -9,13 +9,14 @@ import Icon from '../components/Icon';
 
 const modes: { mode: PracticeMode; icon: string; label: string; desc: string }[] = [
   { mode: 'sequential', icon: 'list', label: '顺序练习', desc: '从上次离开的地方继续' },
-  { mode: 'random', icon: 'shuffle', label: '随机练习', desc: '打乱未做题' },
+  { mode: 'random', icon: 'shuffle', label: '随机练习', desc: '可选随机题数' },
   { mode: 'wrong', icon: 'x-circle', label: '只刷错题', desc: '复习做错的题' },
   { mode: 'favorite', icon: 'star', label: '收藏题目', desc: '只看收藏的题' },
   { mode: 'exam', icon: 'exam', label: '模拟考试', desc: '完成后显示成绩' },
 ];
 
 type ToastState = { type: 'success' | 'error'; text: string } | null;
+type PracticeStartOptions = { examCount?: number; randomCount?: number };
 
 export default function BanksPage() {
   const banks = useLiveQuery(() => db.banks.orderBy('updatedAt').reverse().toArray());
@@ -60,9 +61,13 @@ export default function BanksPage() {
     );
   }
 
-  const startPractice = (bankId: string, mode: PracticeMode, typeFilter?: QuestionType) => {
+  const startPractice = (bankId: string, mode: PracticeMode, typeFilter?: QuestionType, options?: PracticeStartOptions) => {
     setShowModeModal(null);
-    const qs = typeFilter ? `?type=${typeFilter}` : '';
+    const params = new URLSearchParams();
+    if (typeFilter) params.set('type', typeFilter);
+    if (options?.examCount) params.set('count', String(options.examCount));
+    if (options?.randomCount) params.set('randomCount', String(options.randomCount));
+    const qs = params.toString() ? `?${params.toString()}` : '';
     navigate(`/practice/${bankId}/${mode}${qs}`);
   };
 
@@ -197,7 +202,7 @@ export default function BanksPage() {
         <ModeSheet
           bankId={showModeModal}
           onClose={() => setShowModeModal(null)}
-          onSelect={(mode, typeFilter) => startPractice(showModeModal, mode, typeFilter)}
+          onSelect={(mode, typeFilter, options) => startPractice(showModeModal, mode, typeFilter, options)}
         />
       )}
 
@@ -396,13 +401,27 @@ const TYPE_OPTIONS: { type: QuestionType | ''; icon: string; label: string }[] =
   { type: 'short', icon: 'file-text', label: '简答题' },
 ];
 
+const TYPE_LABELS: Record<QuestionType | '', string> = {
+  '': '全部题型',
+  single: '单选题',
+  multiple: '多选题',
+  judge: '判断题',
+  blank: '填空题',
+  short: '简答题',
+};
+
+type SheetView = 'modes' | 'random' | 'exam';
+
 function ModeSheet({ bankId, onClose, onSelect }: {
   bankId: string;
   onClose: () => void;
-  onSelect: (mode: PracticeMode, typeFilter?: QuestionType) => void;
+  onSelect: (mode: PracticeMode, typeFilter?: QuestionType, options?: PracticeStartOptions) => void;
 }) {
   const [selectedType, setSelectedType] = useState<QuestionType | ''>('');
+  const [view, setView] = useState<SheetView>('modes');
+  const [randomDraftCount, setRandomDraftCount] = useState(20);
   const questions = useLiveQuery(() => db.questions.where('bankId').equals(bankId).toArray(), [bankId]);
+  const records = useLiveQuery(() => db.records.where('bankId').equals(bankId).toArray(), [bankId]);
 
   const typeCounts = useMemo(() => {
     if (!questions) return {} as Record<QuestionType, number>;
@@ -413,6 +432,45 @@ function ModeSheet({ bankId, onClose, onSelect }: {
     return counts;
   }, [questions]);
 
+  const scopedQuestions = useMemo(() => {
+    if (!questions) return [];
+    return selectedType ? questions.filter(q => q.type === selectedType) : questions;
+  }, [questions, selectedType]);
+
+  const answeredIds = useMemo(() => {
+    const latest = new Map<string, PracticeRecord>();
+    for (const record of records ?? []) {
+      const prev = latest.get(record.questionId);
+      if (
+        !prev ||
+        record.timestamp > prev.timestamp ||
+        (record.timestamp === prev.timestamp && (record.id ?? 0) > (prev.id ?? 0))
+      ) {
+        latest.set(record.questionId, record);
+      }
+    }
+
+    const ids = new Set<string>();
+    for (const [questionId, record] of latest) {
+      if (record.status === 'correct' || record.status === 'wrong') {
+        ids.add(questionId);
+      }
+    }
+    return ids;
+  }, [records]);
+
+  const totalCount = scopedQuestions.length;
+  const answeredCount = scopedQuestions.filter(q => answeredIds.has(q.id)).length;
+  const unansweredCount = Math.max(0, totalCount - answeredCount);
+  const customRandomCount = Math.min(Math.max(1, Math.floor(randomDraftCount || 1)), Math.max(1, unansweredCount));
+  const examOptions = Array.from(new Set(
+    [20, 50, 100].filter(n => n < totalCount).concat(totalCount > 0 ? [totalCount] : [])
+  ));
+  const randomOptions = Array.from(new Set(
+    [10, 20, 50, 100].filter(n => n < unansweredCount).concat(unansweredCount > 0 ? [unansweredCount] : [])
+  ));
+  const typeLabel = TYPE_LABELS[selectedType];
+
   const filteredModes = selectedType
     ? modes.filter(m => {
         // wrong/favorite 模式始终可用（它们先按记录筛选再按 type 过滤）
@@ -422,72 +480,245 @@ function ModeSheet({ bankId, onClose, onSelect }: {
       })
     : modes;
 
+  const handleModeClick = (mode: PracticeMode) => {
+    if (mode === 'random' || mode === 'exam') {
+      setView(mode);
+      return;
+    }
+    onSelect(mode, selectedType || undefined);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-3xl rounded-t-3xl border-t border-border-subtle bg-bg-card p-6 pb-8 animate-slide-up"
+        className="max-h-[88dvh] w-full max-w-3xl overflow-hidden rounded-t-3xl border-t border-border-subtle bg-bg-card animate-slide-up"
         onClick={e => e.stopPropagation()}
       >
-        <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-border-default" />
-        <h3 className="font-display text-xl font-semibold text-text-primary">选择练习</h3>
-
-        {/* 题型选择 */}
-        <div className="mt-4">
-          <p className="text-xs font-medium text-text-muted mb-2">题型</p>
-          <div className="flex flex-wrap gap-2">
-            {TYPE_OPTIONS.map(opt => {
-              const count = opt.type ? (typeCounts[opt.type] || 0) : (questions?.length ?? 0);
-              if (opt.type && count === 0) return null;
-              return (
-                <button
-                  key={opt.type || 'all'}
-                  onClick={() => setSelectedType(opt.type)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    selectedType === opt.type
-                      ? 'bg-accent text-white'
-                      : 'bg-bg-secondary text-text-secondary hover:bg-bg-card'
-                  }`}
-                >
-                  {opt.label}
-                  <span className="ml-1 opacity-60">{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 模式选择 */}
-        <div className="mt-5">
-          <p className="text-xs font-medium text-text-muted mb-2">模式</p>
-          <div className="space-y-1">
-            {filteredModes.map((mode, i) => (
-              <button
-                key={mode.mode}
-                onClick={() => onSelect(mode.mode, selectedType || undefined)}
-                className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left transition-all hover:bg-copper-glow active:scale-[0.98]"
-                style={{ animationDelay: `${i * 0.04}s` }}
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper">
-                  <Icon name={mode.icon} size={18} />
-                </div>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-text-primary">{mode.label}</span>
-                  <span className="block text-xs text-text-muted">{mode.desc}</span>
-                </span>
-                <Icon name="chevron-right" size={16} className="text-text-muted" />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button
-          onClick={onClose}
-          className="mt-4 w-full py-2.5 text-sm font-medium text-text-muted transition-colors hover:text-text-secondary"
+        <div className="mx-auto mt-6 h-1 w-10 rounded-full bg-border-default" />
+        <div
+          className="flex w-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{ transform: `translateX(-${view === 'modes' ? 0 : view === 'random' ? 100 : 200}%)` }}
         >
-          取消
-        </button>
+          <div
+            className="max-h-[calc(88dvh-1.5rem)] w-full shrink-0 overflow-y-auto p-6 pt-5 pb-8"
+            aria-hidden={view !== 'modes'}
+          >
+            <h3 className="font-display text-xl font-semibold text-text-primary">选择练习</h3>
+
+            <div className="mt-4">
+              <p className="text-xs font-medium text-text-muted mb-2">题型</p>
+              <div className="flex flex-wrap gap-2">
+                {TYPE_OPTIONS.map(opt => {
+                  const count = opt.type ? (typeCounts[opt.type] || 0) : (questions?.length ?? 0);
+                  if (opt.type && count === 0) return null;
+                  return (
+                    <button
+                      key={opt.type || 'all'}
+                      onClick={() => setSelectedType(opt.type)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        selectedType === opt.type
+                          ? 'bg-accent text-white'
+                          : 'bg-bg-secondary text-text-secondary hover:bg-bg-card'
+                      }`}
+                    >
+                      {opt.label}
+                      <span className="ml-1 opacity-60">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <p className="text-xs font-medium text-text-muted mb-2">模式</p>
+              <div className="space-y-1">
+                {filteredModes.map((mode, i) => (
+                  <button
+                    key={mode.mode}
+                    onClick={() => handleModeClick(mode.mode)}
+                    className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left transition-all hover:bg-copper-glow active:scale-[0.98]"
+                    style={{ animationDelay: `${i * 0.04}s` }}
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper">
+                      <Icon name={mode.icon} size={18} />
+                    </div>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-text-primary">{mode.label}</span>
+                      <span className="block text-xs text-text-muted">{mode.desc}</span>
+                    </span>
+                    <Icon name="chevron-right" size={16} className="text-text-muted" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="mt-4 w-full py-2.5 text-sm font-medium text-text-muted transition-colors hover:text-text-secondary"
+            >
+              取消
+            </button>
+          </div>
+
+          <div
+            className="max-h-[calc(88dvh-1.5rem)] w-full shrink-0 overflow-y-auto p-6 pt-5 pb-8"
+            aria-hidden={view !== 'random'}
+          >
+            <SheetBackButton onClick={() => setView('modes')} />
+            <SheetTitle icon="shuffle" title="随机练习" subtitle={`${typeLabel} · 共 ${totalCount} 题，已练 ${answeredCount} 题，未做 ${unansweredCount} 题`} />
+
+            <SheetSection label="模式">
+              <SheetChoiceRow
+                icon="list"
+                title="完整随机练习"
+                desc="保留完整题单和历史记录，可从题目总览查看已做状态"
+                onClick={() => onSelect('random', selectedType || undefined)}
+                disabled={totalCount === 0}
+              />
+            </SheetSection>
+
+            <SheetSection label="随机抽题">
+              {randomOptions.map(n => (
+                <SheetChoiceRow
+                  key={n}
+                  icon="shuffle"
+                  title={n === unansweredCount ? '全部未做题' : `随机 ${n} 题`}
+                  desc="只从未做题中抽取，记录仍写入同一份进度"
+                  onClick={() => onSelect('random', selectedType || undefined, { randomCount: n })}
+                />
+              ))}
+
+              {unansweredCount > 0 ? (
+                <div className="rounded-2xl px-4 py-3.5 transition-all hover:bg-copper-glow">
+                  <label className="block text-sm font-medium text-text-primary sm:pl-12" htmlFor="bank-random-count-input">
+                    自定义随机题数
+                  </label>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper sm:flex">
+                      <Icon name="shuffle" size={18} />
+                    </div>
+                    <input
+                      id="bank-random-count-input"
+                      type="number"
+                      min={1}
+                      max={unansweredCount}
+                      value={randomDraftCount}
+                      onChange={event => setRandomDraftCount(Number(event.target.value))}
+                      className="min-w-0 flex-1 rounded-xl border border-border-default bg-bg-primary px-4 py-3 text-sm text-text-primary outline-none focus:border-accent focus:ring-4 focus:ring-accent/10"
+                    />
+                    <button
+                      onClick={() => onSelect('random', selectedType || undefined, { randomCount: customRandomCount })}
+                      className="shrink-0 rounded-xl bg-copper px-5 py-3 text-sm font-medium text-white transition-all active:scale-[0.98] active:bg-accent-hover"
+                    >
+                      开始
+                    </button>
+                  </div>
+                  <div className="mt-2 pl-0 text-xs text-text-secondary sm:pl-12">最多可抽 {unansweredCount} 题</div>
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-bg-secondary px-4 py-3.5 text-sm text-text-secondary">
+                  这个范围内的题目都已经做过了，可以进入完整随机练习查看记录或从总览回顾。
+                </div>
+              )}
+            </SheetSection>
+          </div>
+
+          <div
+            className="max-h-[calc(88dvh-1.5rem)] w-full shrink-0 overflow-y-auto p-6 pt-5 pb-8"
+            aria-hidden={view !== 'exam'}
+          >
+            <SheetBackButton onClick={() => setView('modes')} />
+            <SheetTitle icon="exam" title="模拟考试" subtitle={`${typeLabel} · 共 ${totalCount} 题，答完后显示成绩`} />
+
+            <SheetSection label="题量">
+              {examOptions.length === 0 ? (
+                <div className="rounded-2xl bg-bg-secondary px-4 py-3.5 text-sm text-text-secondary">
+                  题库为空，无法开始考试。
+                </div>
+              ) : null}
+              {examOptions.map(n => (
+                <SheetChoiceRow
+                  key={n}
+                  icon={n === totalCount ? 'list' : 'shuffle'}
+                  title={`${n} 题`}
+                  desc={n === totalCount ? '全部题目' : `随机抽取 ${n} 题`}
+                  onClick={() => onSelect('exam', selectedType || undefined, { examCount: n })}
+                />
+              ))}
+            </SheetSection>
+
+            <div className="mt-5 rounded-2xl bg-accent/10 border border-accent/25 px-4 py-3.5">
+              <div className="text-sm text-text-secondary flex items-start gap-2">
+                <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+                <span>考试模式下，答完所有题后才会显示成绩。答错的题会自动加入错题本。</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function SheetBackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="mb-4 flex items-center gap-1 text-sm text-accent">
+      <Icon name="arrow-left" size={16} /> 返回
+    </button>
+  );
+}
+
+function SheetTitle({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper">
+        <Icon name={icon} size={20} />
+      </div>
+      <div className="min-w-0">
+        <h3 className="font-display text-xl font-semibold text-text-primary">{title}</h3>
+        <p className="mt-1 text-xs leading-relaxed text-text-muted">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function SheetSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="mt-5">
+      <p className="text-xs font-medium text-text-muted mb-2">{label}</p>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function SheetChoiceRow({
+  icon,
+  title,
+  desc,
+  onClick,
+  disabled,
+}: {
+  icon: string;
+  title: string;
+  desc: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left transition-all hover:bg-copper-glow active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper">
+        <Icon name={icon} size={18} />
+      </div>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-text-primary">{title}</span>
+        <span className="block text-xs leading-relaxed text-text-muted">{desc}</span>
+      </span>
+      <Icon name="chevron-right" size={16} className="shrink-0 text-text-muted" />
+    </button>
   );
 }
 
