@@ -287,14 +287,16 @@ export default function PracticePage() {
     return null;
   }, [isAnswered, questions.length]);
 
+  const isRandomSample = mode === 'random' && randomCount !== undefined;
+
   const moveBy = useCallback((direction: 1 | -1) => {
     setCurrentIndex(prev => {
-      if (mode === 'random') {
+      if (mode === 'random' && !isRandomSample) {
         return findUnansweredIndex(prev, direction) ?? prev;
       }
       return Math.min(Math.max(prev + direction, 0), questions.length - 1);
     });
-  }, [findUnansweredIndex, mode, questions.length]);
+  }, [findUnansweredIndex, isRandomSample, mode, questions.length]);
 
   const handleAutoAdvance = useCallback(() => {
     moveBy(1);
@@ -374,10 +376,10 @@ export default function PracticePage() {
   const answeredText = `${stats.answered}/${questions.length}`;
   const progressRatio = questions.length > 0 ? stats.answered / questions.length : 0;
   const progressText = mode === 'exam' ? positionText : `已练 ${answeredText}`;
-  const prevDisabled = mode === 'random'
+  const prevDisabled = mode === 'random' && !isRandomSample
     ? findUnansweredIndex(currentIndex, -1) === null
     : currentIndex === 0;
-  const nextDisabled = mode === 'random'
+  const nextDisabled = mode === 'random' && !isRandomSample
     ? findUnansweredIndex(currentIndex, 1) === null
     : currentIndex >= questions.length - 1;
   const TYPE_LABELS: Record<string, string> = { single: '单选', multiple: '多选', judge: '判断', blank: '填空', short: '简答' };
@@ -484,6 +486,53 @@ export default function PracticePage() {
               className="flex-1 py-3 bg-accent text-white rounded-xl font-medium active:bg-accent-hover active:scale-[0.98] transition-all"
             >
               查看错题
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="flex-1 py-3 bg-bg-secondary text-text-secondary rounded-xl font-medium active:opacity-80"
+            >
+              返回首页
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 抽样随机练习完成页
+  if (mode === 'random' && isRandomSample && stats.isFinished) {
+    return (
+      <div className="px-4 pt-4 pb-8">
+        <div className="flex flex-col items-center justify-center h-[70vh]">
+          <Icon
+            name="trophy"
+            size={64}
+            className={stats.accuracy >= 90 ? 'text-accent mb-4' : stats.accuracy >= 60 ? 'text-accent mb-4' : 'text-text-muted mb-4'}
+          />
+          <h2 className="text-2xl font-bold text-text-primary mb-2">练习完成！</h2>
+          <div className="text-5xl font-bold text-accent my-4">{stats.accuracy}分</div>
+
+          <div className="grid grid-cols-3 gap-4 w-full max-w-xs mt-4">
+            <div className="text-center bg-bg-secondary rounded-xl p-3">
+              <div className="text-xl font-bold text-text-primary">{questions.length}</div>
+              <div className="text-xs text-text-secondary">总题数</div>
+            </div>
+            <div className="text-center bg-emerald-500/10 rounded-xl p-3">
+              <div className="text-xl font-bold text-emerald-500">{stats.correct}</div>
+              <div className="text-xs text-emerald-500">正确</div>
+            </div>
+            <div className="text-center bg-red-500/10 rounded-xl p-3">
+              <div className="text-xl font-bold text-red-500">{stats.wrong}</div>
+              <div className="text-xs text-red-500">错误</div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-8 w-full max-w-xs">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex-1 py-3 bg-accent text-white rounded-xl font-medium active:bg-accent-hover active:scale-[0.98] transition-all"
+            >
+              继续练习
             </button>
             <button
               onClick={() => navigate('/')}
