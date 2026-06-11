@@ -14,6 +14,7 @@ import { getQuestionsByIds } from '../repositories/questionRepo';
 import QuestionCard from '../components/QuestionCard';
 import QuestionOverview from '../components/QuestionOverview';
 import Icon from '../components/Icon';
+import CompletionScreen from '../components/CompletionScreen';
 import type { Question } from '../types';
 
 const OVERVIEW_FAB_SIZE = 48;
@@ -101,6 +102,7 @@ export default function PracticePage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState<Record<number, AnswerStatus>>({});
+  const [showCompletion, setShowCompletion] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -376,6 +378,7 @@ export default function PracticePage() {
   const answeredText = `${stats.answered}/${questions.length}`;
   const progressRatio = questions.length > 0 ? stats.answered / questions.length : 0;
   const progressText = mode === 'exam' ? positionText : `已练 ${answeredText}`;
+  const showFinishButton = (mode === 'exam' || (mode === 'random' && isRandomSample)) && stats.isFinished;
   const prevDisabled = mode === 'random' && !isRandomSample
     ? findUnansweredIndex(currentIndex, -1) === null
     : currentIndex === 0;
@@ -452,98 +455,9 @@ export default function PracticePage() {
     );
   }
 
-  // 考试结束页
-  if (mode === 'exam' && stats.isFinished) {
-    return (
-      <div className="px-4 pt-4 pb-8">
-        <div className="flex flex-col items-center justify-center h-[70vh]">
-          <Icon
-            name="trophy"
-            size={64}
-            className={stats.accuracy >= 90 ? 'text-accent mb-4' : stats.accuracy >= 60 ? 'text-accent mb-4' : 'text-text-muted mb-4'}
-          />
-          <h2 className="text-2xl font-bold text-text-primary mb-2">考试结束！</h2>
-          <div className="text-5xl font-bold text-accent my-4">{stats.accuracy}分</div>
-
-          <div className="grid grid-cols-3 gap-4 w-full max-w-xs mt-4">
-            <div className="text-center bg-bg-secondary rounded-xl p-3">
-              <div className="text-xl font-bold text-text-primary">{questions.length}</div>
-              <div className="text-xs text-text-secondary">总题数</div>
-            </div>
-            <div className="text-center bg-emerald-500/10 rounded-xl p-3">
-              <div className="text-xl font-bold text-emerald-500">{stats.correct}</div>
-              <div className="text-xs text-emerald-500">正确</div>
-            </div>
-            <div className="text-center bg-red-500/10 rounded-xl p-3">
-              <div className="text-xl font-bold text-red-500">{stats.wrong}</div>
-              <div className="text-xs text-red-500">错误</div>
-            </div>
-          </div>
-
-          <div className="flex gap-3 mt-8 w-full max-w-xs">
-            <button
-              onClick={() => navigate(`/wrong/${bankId}`)}
-              className="flex-1 py-3 bg-accent text-white rounded-xl font-medium active:bg-accent-hover active:scale-[0.98] transition-all"
-            >
-              查看错题
-            </button>
-            <button
-              onClick={() => navigate('/')}
-              className="flex-1 py-3 bg-bg-secondary text-text-secondary rounded-xl font-medium active:opacity-80"
-            >
-              返回首页
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 抽样随机练习完成页
-  if (mode === 'random' && isRandomSample && stats.isFinished) {
-    return (
-      <div className="px-4 pt-4 pb-8">
-        <div className="flex flex-col items-center justify-center h-[70vh]">
-          <Icon
-            name="trophy"
-            size={64}
-            className={stats.accuracy >= 90 ? 'text-accent mb-4' : stats.accuracy >= 60 ? 'text-accent mb-4' : 'text-text-muted mb-4'}
-          />
-          <h2 className="text-2xl font-bold text-text-primary mb-2">练习完成！</h2>
-          <div className="text-5xl font-bold text-accent my-4">{stats.accuracy}分</div>
-
-          <div className="grid grid-cols-3 gap-4 w-full max-w-xs mt-4">
-            <div className="text-center bg-bg-secondary rounded-xl p-3">
-              <div className="text-xl font-bold text-text-primary">{questions.length}</div>
-              <div className="text-xs text-text-secondary">总题数</div>
-            </div>
-            <div className="text-center bg-emerald-500/10 rounded-xl p-3">
-              <div className="text-xl font-bold text-emerald-500">{stats.correct}</div>
-              <div className="text-xs text-emerald-500">正确</div>
-            </div>
-            <div className="text-center bg-red-500/10 rounded-xl p-3">
-              <div className="text-xl font-bold text-red-500">{stats.wrong}</div>
-              <div className="text-xs text-red-500">错误</div>
-            </div>
-          </div>
-
-          <div className="flex gap-3 mt-8 w-full max-w-xs">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex-1 py-3 bg-accent text-white rounded-xl font-medium active:bg-accent-hover active:scale-[0.98] transition-all"
-            >
-              继续练习
-            </button>
-            <button
-              onClick={() => navigate('/')}
-              className="flex-1 py-3 bg-bg-secondary text-text-secondary rounded-xl font-medium active:opacity-80"
-            >
-              返回首页
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  // 结算页（点击"结束"按钮后触发）
+  if (showCompletion && stats.isFinished && (mode === 'exam' || (mode === 'random' && isRandomSample))) {
+    return <CompletionScreen mode={mode === 'exam' ? 'exam' : 'random'} stats={stats} questionsLength={questions.length} bankId={bankId!} />;
   }
 
   const currentQuestion = questions[currentIndex];
@@ -614,11 +528,14 @@ export default function PracticePage() {
         </div>
 
         <button
-          onClick={goNext}
-          disabled={nextDisabled}
-          className="px-4 py-2.5 bg-accent text-white rounded-xl text-sm font-medium disabled:opacity-30 active:bg-accent-hover flex items-center gap-1"
+          onClick={showFinishButton ? () => setShowCompletion(true) : goNext}
+          disabled={showFinishButton ? false : nextDisabled}
+          className={showFinishButton
+            ? "px-4 py-2.5 bg-accent text-white rounded-xl text-sm font-medium active:bg-accent-hover active:scale-[0.98] transition-all flex items-center gap-1"
+            : "px-4 py-2.5 bg-accent text-white rounded-xl text-sm font-medium disabled:opacity-30 active:bg-accent-hover flex items-center gap-1"
+          }
         >
-          下一题 <Icon name="arrow-right" size={14} />
+          {showFinishButton ? '结束' : '下一题'} <Icon name="arrow-right" size={14} />
         </button>
       </div>
 

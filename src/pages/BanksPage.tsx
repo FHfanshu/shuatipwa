@@ -118,7 +118,7 @@ export default function BanksPage() {
       <Toast toast={toast} />
 
       {/* Header */}
-      <header className="flex items-start justify-between gap-4 animate-reveal-up">
+      <header className="flex items-start justify-between gap-4">
         <div className="min-w-0 pt-1">
           <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-text-primary">
             题库
@@ -138,7 +138,7 @@ export default function BanksPage() {
 
       {/* Search */}
       {banks.length > 0 && (
-        <div className="mt-5 animate-reveal-up reveal-delay-1">
+        <div className="mt-5">
           <div className="relative">
             <Icon name="list" size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             <input
@@ -170,10 +170,10 @@ export default function BanksPage() {
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {filteredBanks.map((bank, index) => (
+          {filteredBanks.map((bank) => (
             <div
               key={bank.id}
-              className={`animate-reveal-up reveal-delay-${Math.min(index + 2, 10)}`}
+              className=""
             >
               <BankCard
                 bank={bank}
@@ -368,7 +368,7 @@ function BankCard({
 /* ── Empty State ── */
 function EmptyState({ onImport }: { onImport: () => void }) {
   return (
-    <div className="mt-24 flex flex-col items-center text-center animate-reveal-up reveal-delay-1">
+    <div className="mt-24 flex flex-col items-center text-center">
       <div className="relative mb-6">
         <div className="flex h-20 w-20 items-center justify-center rounded-3xl border border-copper/20 bg-copper-glow text-copper">
           <Icon name="book" size={36} />
@@ -419,7 +419,7 @@ function ModeSheet({ bankId, onClose, onSelect }: {
 }) {
   const [selectedType, setSelectedType] = useState<QuestionType | ''>('');
   const [view, setView] = useState<SheetView>('modes');
-  const [randomDraftCount, setRandomDraftCount] = useState(20);
+  const [randomDraftCount, setRandomDraftCount] = useState(1);
   const questions = useLiveQuery(() => db.questions.where('bankId').equals(bankId).toArray(), [bankId]);
   const records = useLiveQuery(() => db.records.where('bankId').equals(bankId).toArray(), [bankId]);
 
@@ -589,14 +589,17 @@ function ModeSheet({ bankId, onClose, onSelect }: {
               ))}
 
               {unansweredCount > 0 ? (
-                <div className="rounded-2xl px-4 py-3.5 transition-all hover:bg-copper-glow">
-                  <label className="block text-sm font-medium text-text-primary sm:pl-12" htmlFor="bank-random-count-input">
-                    自定义随机题数
-                  </label>
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper sm:flex">
+                <div className="rounded-2xl border border-border-subtle bg-bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-copper">
                       <Icon name="shuffle" size={18} />
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <label htmlFor="bank-random-count-input" className="block text-sm font-medium text-text-primary">自定义随机题数</label>
+                      <span className="block text-xs text-text-muted">最多可抽 {unansweredCount} 题</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2.5">
                     <input
                       id="bank-random-count-input"
                       type="number"
@@ -604,16 +607,15 @@ function ModeSheet({ bankId, onClose, onSelect }: {
                       max={unansweredCount}
                       value={randomDraftCount}
                       onChange={event => setRandomDraftCount(Number(event.target.value))}
-                      className="min-w-0 flex-1 rounded-xl border border-border-default bg-bg-primary px-4 py-3 text-sm text-text-primary outline-none focus:border-accent focus:ring-4 focus:ring-accent/10"
+                      className="min-w-0 w-20 rounded-xl border border-border-default bg-bg-primary px-3 py-2.5 text-center text-sm font-medium text-text-primary outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
                     />
                     <button
                       onClick={() => onSelect('random', selectedType || undefined, { randomCount: customRandomCount })}
-                      className="shrink-0 rounded-xl bg-copper px-5 py-3 text-sm font-medium text-white transition-all active:scale-[0.98] active:bg-accent-hover"
+                      className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white transition-all active:scale-[0.98] active:bg-accent-hover"
                     >
                       开始
                     </button>
                   </div>
-                  <div className="mt-2 pl-0 text-xs text-text-secondary sm:pl-12">最多可抽 {unansweredCount} 题</div>
                 </div>
               ) : (
                 <div className="rounded-2xl bg-bg-secondary px-4 py-3.5 text-sm text-text-secondary">

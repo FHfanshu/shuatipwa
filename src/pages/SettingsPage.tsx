@@ -225,7 +225,7 @@ export default function SettingsPage() {
     <div className="min-h-dvh bg-bg-primary">
       {/* Header */}
       <div className="px-5 pt-6 pb-1">
-        <h1 className="font-display text-[2rem] font-semibold text-text-primary tracking-tight">设置</h1>
+        <h1 className="font-display text-3xl font-semibold leading-tight text-text-primary tracking-tight">设置</h1>
       </div>
 
       <div className="px-5 pb-6 space-y-4">

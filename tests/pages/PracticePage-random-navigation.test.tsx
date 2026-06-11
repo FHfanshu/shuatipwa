@@ -143,7 +143,14 @@ describe('random mode navigation', () => {
     // Answer second question correctly and submit
     await answerCorrectly();
 
-    // After auto-advance completes, should show finish screen with ring gauge
+    // After auto-advance, "下一题" becomes "结束" button
+    const finishBtn = await screen.findByRole('button', { name: /结束/ }, { timeout: 2000 });
+    expect(finishBtn).toBeInTheDocument();
+
+    // Click "结束" to trigger completion screen
+    await userEvent.click(finishBtn);
+
+    // Completion screen should appear
     await waitFor(() => {
       expect(screen.getByText('练习结果')).toBeInTheDocument();
     }, { timeout: 2000 });

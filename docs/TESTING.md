@@ -15,13 +15,33 @@ tests/
     answerJudge.test.ts
     wrongQuestion.test.ts
     textParser.test.ts
+    questionFingerprint.test.ts
   repositories/        # IndexedDB 集成测试（用 fake-indexeddb）
     recordRepo.test.ts
     favoriteRepo.test.ts
     aiExplanationRepo.test.ts
+    bankRepo.test.ts
+    questionRepo.test.ts
+    settingsRepo.test.ts
   services/            # 业务流程测试
     practiceService.test.ts
     importService.test.ts
+    exportService.test.ts
+    practiceSessionStore.test.ts
+    aiService.test.ts
+  components/          # 组件 smoke 测试
+    QuestionCard.test.tsx
+    ModelSelect.test.tsx
+    QuestionOverview.test.tsx
+  contexts/            # Context 测试
+    ThemeContext.test.tsx
+  pages/               # 页面测试
+    BanksPage.test.tsx
+    PracticePage.test.ts
+    HomePage.test.ts
+    ImportPage.test.ts
+  utils/               # 工具函数测试
+    helper.test.ts
   fixtures/
     import/            # 导入格式 fixture
     regression/        # 真实 bug 回归样例
@@ -52,9 +72,13 @@ tests/
 | 答案判断 | `tests/domain/answerJudge.test.ts` |
 | 错题本规则 | `tests/domain/wrongQuestion.test.ts` |
 | 文本解析 | fixture + `tests/domain/textParser.test.ts` |
+| 内容去重 hash | `tests/domain/questionFingerprint.test.ts` |
 | Excel/CSV/JSON 导入 | `tests/services/importService.test.ts` |
+| 数据导出 | `tests/services/exportService.test.ts` |
 | 做题恢复 | `tests/services/practiceService.test.ts` |
 | IndexedDB schema | migration/repository test |
+| 题目 CRUD | `tests/repositories/questionRepo.test.ts` |
+| 应用设置 | `tests/repositories/settingsRepo.test.ts` |
 | AI 解析缓存 | `tests/repositories/aiExplanationRepo.test.ts` |
 | PWA 更新 | 手动验证记录 |
 
