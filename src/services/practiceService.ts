@@ -82,6 +82,10 @@ export async function loadQuestions(
     qs = qs.filter(q => q.type === options.typeFilter);
   }
 
+  if (mode === 'random') {
+    qs = await filterUnansweredQuestions(bankId, qs);
+  }
+
   if (mode === 'wrong' || mode === 'favorite') {
     const questionOrder = new Map((requestedIds ?? []).map((id, index) => [id, index]));
     qs = qs.filter(q => q.bankId === bankId).sort((a, b) => {
@@ -110,6 +114,10 @@ export async function restoreFromRecords(
   mode: PracticeMode,
   questions: Question[]
 ): Promise<PracticeSession> {
+  if (mode === 'wrong') {
+    return { questions, results: {}, questionStates: new Map(), startIndex: 0 };
+  }
+
   const allRecords = await getRecordsByBankId(bankId);
 
   if (allRecords.length === 0) {
@@ -130,16 +138,13 @@ export async function restoreFromRecords(
     if (idx === undefined) continue;
     results[idx] = record.status;
 
-    // 错题模式不恢复题目状态，让用户重新作答
-    if (mode !== 'wrong') {
-      questionStates.set(idx, {
-        userAnswer: record.userAnswer || [],
-        blankInput: '',
-        submitted: true,
-        status: record.status,
-        recordId: record.id,
-      });
-    }
+    questionStates.set(idx, {
+      userAnswer: record.userAnswer || [],
+      blankInput: '',
+      submitted: true,
+      status: record.status,
+      recordId: record.id,
+    });
   }
 
   const startIndex = determineStartIndex(mode, questions.length, results);
@@ -150,6 +155,18 @@ export async function restoreFromRecords(
   }
 
   return { questions, results, questionStates, startIndex };
+}
+
+export async function filterUnansweredQuestions(bankId: string, questions: Question[]): Promise<Question[]> {
+  if (questions.length === 0) return questions;
+
+  const records = await getRecordsByBankId(bankId);
+  if (records.length === 0) return questions;
+
+  const answeredIds = getAnsweredQuestionIds(records);
+  if (answeredIds.size === 0) return questions;
+
+  return questions.filter(q => !answeredIds.has(q.id));
 }
 
 /**
@@ -222,11 +239,25 @@ function getLatestRecords(records: PracticeRecord[]): Map<string, PracticeRecord
   const latest = new Map<string, PracticeRecord>();
   for (const r of records) {
     const existing = latest.get(r.questionId);
-    if (!existing || r.timestamp > existing.timestamp) {
+    if (
+      !existing ||
+      r.timestamp > existing.timestamp ||
+      (r.timestamp === existing.timestamp && (r.id ?? 0) > (existing.id ?? 0))
+    ) {
       latest.set(r.questionId, r);
     }
   }
   return latest;
+}
+
+function getAnsweredQuestionIds(records: PracticeRecord[]): Set<string> {
+  const answeredIds = new Set<string>();
+  for (const [questionId, record] of getLatestRecords(records)) {
+    if (record.status === 'correct' || record.status === 'wrong') {
+      answeredIds.add(questionId);
+    }
+  }
+  return answeredIds;
 }
 
 function determineStartIndex(

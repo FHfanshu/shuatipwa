@@ -22,15 +22,16 @@ function question(overrides?: Partial<Question>): Question {
 }
 
 describe('buildGuidanceMessages', () => {
-  it('does not include the correct answer or explanation in pre-answer guidance context', () => {
+  it('does not include answer, explanation, or option contents in pre-answer guidance context', () => {
     const messages = buildGuidanceMessages(question(), [
       { role: 'user', content: '我没思路' },
     ]);
     const payload = JSON.stringify(messages);
 
     expect(payload).toContain('下列哪项属于操作系统？');
-    expect(payload).toContain('MySQL');
-    expect(payload).toContain('Windows');
+    expect(payload).toContain('选项：共 4 项');
+    expect(payload).not.toContain('MySQL');
+    expect(payload).not.toContain('Windows');
     expect(payload).not.toContain('正确答案：');
     expect(payload).not.toContain('answer');
     expect(payload).not.toContain('Windows 是操作系统。');
@@ -40,6 +41,7 @@ describe('buildGuidanceMessages', () => {
     const messages = buildGuidanceMessages(question(), []);
     expect(messages[0].content).toContain('绝对不要直接给最终答案');
     expect(messages[0].content).toContain('正确选项字母');
+    expect(messages[0].content).toContain('禁止复述、引用或改写任何选项文本');
   });
 
   it('preserves prior assistant hints so refresh requests can avoid repetition', () => {
@@ -129,9 +131,28 @@ describe('generateGuidance', () => {
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(String((init as RequestInit).body));
     expect(body.stream).toBe(true);
-    expect(body.max_completion_tokens).toBe(500);
+    expect(body.max_completion_tokens).toBe(160);
     expect(body.max_tokens).toBeUndefined();
     expect(body.thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('replaces guidance that leaks an option with a safe fallback before emitting it', async () => {
+    await db.settings.bulkPut([
+      { key: 'ai_endpoint', value: 'https://api.example.com/v1', updatedAt: 1 },
+      { key: 'ai_apiKey', value: 'key', updatedAt: 1 },
+      { key: 'ai_model', value: 'example-chat', updatedAt: 1 },
+    ]);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ choices: [{ message: { content: 'Windows 是系统软件，直接选它。' } }] }),
+    } as Response);
+    const chunks: string[] = [];
+
+    const result = await generateGuidance(question(), [], text => chunks.push(text));
+
+    expect(result).toBe('先抓题干关键词，再按概念类别逐项判断。');
+    expect(chunks).toEqual(['先抓题干关键词，再按概念类别逐项判断。']);
   });
 
   it('reads OpenAI-style SSE chunks for other providers', async () => {

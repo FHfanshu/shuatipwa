@@ -22,12 +22,23 @@ const SYSTEM_PROMPT = `你是刷题 App 的题目解析助手，称呼用户为"
 const GUIDANCE_SYSTEM_PROMPT = `你是刷题 App 的答前学习教练，称呼用户为"同学"。学生还没有提交答案，你的目标是帮 TA 想起来、学会推理，而不是替 TA 作答。
 
 必须遵守：
-- 绝对不要直接给最终答案、正确选项字母、判断题正误结论、填空题可直接抄写的完整答案。
-- 不要使用"答案是"、"应选"、"正确选项"、"填"这类会泄题的表达。
+- 这是一条"答前提示"，不是解析；宁可抽象一点，也不能让学生直接定位答案。
+- 绝对不要直接给最终答案、正确选项字母/序号、判断题正误结论、填空题或简答题可直接抄写的完整答案。
+- 禁止复述、引用或改写任何选项文本、答案关键词、专有名词、人名、年份、数值、公式结果。
+- 不要给答案的首字、字数、谐音、近义词、英文缩写或其它可反推答案的线索。
+- 选择题：不要逐项排除，不要描述"哪一项具有/不具有某特征"；只提示判别标准或题干关键词。
+- 判断题：不要用肯定或否定方式评价题干；只提示应核对的概念边界。
+- 填空/简答：只提示作答角度或知识范围，不给可填入的词句。
 - 如果学生追问最终答案，要礼貌拒绝，并改给下一步提示。
-- 只给一条很短的 hint：相关知识点、关键词辨析、排除方向、记忆钩子或一个引导性小问题。
-- 不要聊天式寒暄，不要展开讲解，不要列多条。
-- 每次回复控制在 20 到 60 字。`;
+- 只输出一条 15 到 45 字中文 hint，不寒暄、不编号、不使用 Markdown。`;
+
+const GUIDANCE_FALLBACK_BY_TYPE: Record<Question['type'], string> = {
+  single: '先抓题干关键词，再按概念类别逐项判断。',
+  multiple: '先列出题干要求，再核对每项是否都满足。',
+  judge: '先找绝对化表述，再回忆概念边界。',
+  blank: '先看空格前后语境，定位考察的知识点。',
+  short: '先列关键词，再按定义、条件、结果组织回答。',
+};
 
 export interface AIConfig {
   endpoint: string;
@@ -120,6 +131,77 @@ function extractCompletionText(payload: unknown): string {
       || normalizeContent(choice.text);
   }
   return normalizeContent(data.output_text);
+}
+
+function compactForLeakCheck(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\s"'`“”‘’.,，。;；:：!?！？()[\]{}【】<>《》、/\\|-]+/g, '');
+}
+
+function includesMeaningfulToken(text: string, token: string): boolean {
+  const compactToken = compactForLeakCheck(token);
+  if (compactToken.length < 2) return false;
+  return compactForLeakCheck(text).includes(compactToken);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function includesOptionLabelLeak(text: string, labels: string[]): boolean {
+  return labels.some(label => {
+    const normalizedLabel = label.trim();
+    if (!normalizedLabel || normalizedLabel.length > 3) return false;
+    const escaped = escapeRegExp(normalizedLabel);
+    return new RegExp(`(?:答案|应选|选|第|正确(?:的是|选项)?|应该是)\\s*${escaped}|${escaped}\\s*(?:项|选项)`, 'i')
+      .test(text);
+  });
+}
+
+function includesJudgementLeak(question: Question, text: string): boolean {
+  if (question.type !== 'judge') return false;
+  const answer = question.answer[0]?.trim().toLowerCase();
+  if (answer === 'true') {
+    return /(?:答案|结论|判断|这句|说法).{0,6}(?:正确|对|成立|为真)|(?:正确|对|成立|为真).{0,6}(?:答案|结论|判断)/.test(text);
+  }
+  if (answer === 'false') {
+    return /(?:答案|结论|判断|这句|说法).{0,6}(?:错误|错|不成立|为假)|(?:错误|错|不成立|为假).{0,6}(?:答案|结论|判断)/.test(text);
+  }
+  return false;
+}
+
+function isGuidanceLikelyLeakingAnswer(question: Question, text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  if (/(?:答案是|正确答案|正确选项|应选|直接选|填入|填写为)/.test(trimmed)) {
+    return true;
+  }
+
+  const optionEntries = question.options
+    ? Object.entries(question.options).filter(([, value]) => String(value).trim())
+    : [];
+  if (optionEntries.length > 0) {
+    const labels = optionEntries.map(([label]) => label);
+    if (includesOptionLabelLeak(trimmed, labels)) return true;
+    if (optionEntries.some(([, value]) => includesMeaningfulToken(trimmed, String(value)))) return true;
+  }
+
+  if (question.answer.some(answer => includesMeaningfulToken(trimmed, answer))) {
+    return true;
+  }
+
+  return includesJudgementLeak(question, trimmed);
+}
+
+function sanitizeGuidanceText(question: Question, text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  if (isGuidanceLikelyLeakingAnswer(question, trimmed)) {
+    return GUIDANCE_FALLBACK_BY_TYPE[question.type];
+  }
+  return trimmed;
 }
 
 async function readAPIError(response: Response): Promise<string> {
@@ -345,14 +427,14 @@ export function buildGuidanceMessages(
   chatHistory: GuidanceChatMessage[]
 ): ChatMessage[] {
   const typeLabel = getQuestionTypeLabel(question.type);
-  const optionsText = question.options
-    ? Object.entries(question.options).map(([k, v]) => `${k}. ${v}`).join('\n')
-    : '';
+  const optionCount = question.options
+    ? Object.values(question.options).filter(value => String(value).trim()).length
+    : 0;
 
   const context =
     `题型：${typeLabel}\n` +
     `题目：${question.question}\n` +
-    (optionsText ? `选项：\n${optionsText}\n` : '') +
+    (optionCount > 0 ? `选项：共 ${optionCount} 项，内容已隐藏以避免泄题。\n` : '') +
     `状态：学生尚未提交答案，请只做答前引导。`;
 
   return [
@@ -382,7 +464,7 @@ export async function generateGuidance(
   const url = getOpenAICompatUrl(config.endpoint, 'chat/completions');
   const body = buildCompletionBody(config, buildGuidanceMessages(question, chatHistory), {
     temperature: 0.45,
-    maxTokens: 500,
+    maxTokens: 160,
     preferStream: true,
   });
 
@@ -400,10 +482,12 @@ export async function generateGuidance(
     throw new Error(`API 请求失败：${await readAPIError(response)}`);
   }
 
-  const fullText = await readChatCompletion(response, onChunk);
+  const fullText = await readChatCompletion(response, () => {});
   if (!fullText.trim()) {
     throw new Error('AI 没有返回提示内容，请稍后重试');
   }
 
-  return fullText;
+  const safeText = sanitizeGuidanceText(question, fullText);
+  onChunk(safeText);
+  return safeText;
 }

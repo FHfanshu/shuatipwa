@@ -9,7 +9,7 @@ import Icon from '../components/Icon';
 
 const modes: { mode: PracticeMode; icon: string; label: string; desc: string }[] = [
   { mode: 'sequential', icon: 'list', label: '顺序练习', desc: '从上次离开的地方继续' },
-  { mode: 'random', icon: 'shuffle', label: '随机练习', desc: '打乱顺序' },
+  { mode: 'random', icon: 'shuffle', label: '随机练习', desc: '打乱未做题' },
   { mode: 'wrong', icon: 'x-circle', label: '只刷错题', desc: '复习做错的题' },
   { mode: 'favorite', icon: 'star', label: '收藏题目', desc: '只看收藏的题' },
   { mode: 'exam', icon: 'exam', label: '模拟考试', desc: '完成后显示成绩' },

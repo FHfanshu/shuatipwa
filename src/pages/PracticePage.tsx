@@ -9,6 +9,7 @@ import {
   saveProgress,
   computeStats,
   restoreFromRecords,
+  filterUnansweredQuestions,
 } from '../services/practiceService';
 import { saveLastPracticeSession, loadLastPracticeSession } from '../services/practiceSessionStore';
 import { getQuestionsByIds } from '../repositories/questionRepo';
@@ -146,14 +147,40 @@ export default function PracticePage() {
               const qs = await getQuestionsByIds(last.questionIds);
               if (canceled) return;
               const idToQ = new Map(qs.map(q => [q.id, q]));
-              const ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
+              let ordered = last.questionIds.map(id => idToQ.get(id)).filter(Boolean) as Question[];
               if (ordered.length > 0) {
+                let restoredIndex = Math.min(Math.max(0, last.currentIndex), ordered.length - 1);
+
+                if (mode === 'random') {
+                  const activeQuestionId = ordered[restoredIndex]?.id;
+                  ordered = await filterUnansweredQuestions(bankId, ordered);
+                  if (canceled) return;
+
+                  if (ordered.length === 0) {
+                    setQuestions([]);
+                    setResults({});
+                    setQuestionStates(new Map());
+                    setCurrentIndex(0);
+                    setRestored(true);
+                    setLoading(false);
+                    lastSavedRef.current = '';
+                    return;
+                  }
+
+                  const activeIndex = activeQuestionId
+                    ? ordered.findIndex(q => q.id === activeQuestionId)
+                    : -1;
+                  restoredIndex = activeIndex >= 0
+                    ? activeIndex
+                    : Math.min(restoredIndex, ordered.length - 1);
+                }
+
                 const restored = await restoreFromRecords(bankId, mode, ordered);
                 if (canceled) return;
                 setQuestions(ordered);
                 setResults(restored.results);
                 setQuestionStates(restored.questionStates);
-                setCurrentIndex(Math.min(last.currentIndex, ordered.length - 1));
+                setCurrentIndex(restoredIndex);
                 setRestored(true);
                 setLoading(false);
                 lastSavedRef.current = '';
@@ -428,6 +455,20 @@ export default function PracticePage() {
   }
 
   if (questions.length === 0) {
+    const emptyIcon = mode === 'wrong' ? 'check-circle' : mode === 'favorite' ? 'star-empty' : mode === 'random' ? 'shuffle' : 'file-text';
+    const emptyTitle = mode === 'wrong'
+      ? '没有错题，太棒了！'
+      : mode === 'favorite'
+        ? '还没有收藏题目'
+        : mode === 'random'
+          ? '没有未做题了'
+          : '题库为空';
+    const emptySubtitle = mode === 'wrong'
+      ? '继续保持！'
+      : mode === 'random'
+        ? '这个范围内的题目已经都练过了'
+        : '先去练习一些题目吧';
+
     return (
       <div className="px-4 pt-4">
         <button onClick={() => navigate(-1)} className="text-accent text-sm mb-4 flex items-center gap-1">
@@ -435,15 +476,15 @@ export default function PracticePage() {
         </button>
         <div className="flex flex-col items-center justify-center h-[60vh]">
           <Icon
-            name={mode === 'wrong' ? 'check-circle' : mode === 'favorite' ? 'star-empty' : 'file-text'}
+            name={emptyIcon}
             size={56}
             className={mode === 'wrong' ? 'text-emerald-500 mb-4' : 'text-text-muted mb-4'}
           />
           <div className="text-lg font-medium text-text-secondary">
-            {mode === 'wrong' ? '没有错题，太棒了！' : mode === 'favorite' ? '还没有收藏题目' : '题库为空'}
+            {emptyTitle}
           </div>
           <p className="text-sm text-text-secondary mt-2">
-            {mode === 'wrong' ? '继续保持！' : '先去练习一些题目吧'}
+            {emptySubtitle}
           </p>
         </div>
       </div>

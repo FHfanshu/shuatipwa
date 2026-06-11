@@ -89,6 +89,22 @@ describe('loadQuestions', () => {
     const qs = await loadQuestions('b1', 'exam', { examCount: 3 });
     expect(qs).toHaveLength(3);
   });
+
+  it('random 模式排除已做过的题目', async () => {
+    await seedQuestions('b1', 5);
+    await seedRecords('b1', [
+      { questionId: 'q1', status: 'correct', timestamp: 1 },
+      { questionId: 'q3', status: 'wrong', timestamp: 2 },
+    ]);
+
+    const qs = await loadQuestions('b1', 'random');
+    const ids = qs.map(q => q.id);
+
+    expect(qs).toHaveLength(3);
+    expect(ids).not.toContain('q1');
+    expect(ids).not.toContain('q3');
+    expect(new Set(ids)).toEqual(new Set(['q0', 'q2', 'q4']));
+  });
 });
 
 describe('restoreFromRecords', () => {
@@ -133,14 +149,15 @@ describe('restoreFromRecords', () => {
     expect(session.startIndex).toBe(2);
   });
 
-  it('wrong 模式不恢复题目状态（允许重新作答）', async () => {
+  it('wrong 模式不恢复历史结果和题目状态（允许重新作答）', async () => {
     const qs = await seedQuestions('b1', 2);
     await seedRecords('b1', [
       { questionId: 'q0', status: 'wrong', timestamp: 1 },
     ]);
     const session = await restoreFromRecords('b1', 'wrong', qs);
-    expect(session.questionStates.size).toBe(0); // 不恢复
-    expect(session.results[0]).toBe('wrong');    // 但结果保留（用于统计）
+    expect(session.questionStates.size).toBe(0);
+    expect(session.results).toEqual({});
+    expect(session.startIndex).toBe(0);
   });
 
   it('只保留每题最新记录', async () => {
@@ -149,6 +166,17 @@ describe('restoreFromRecords', () => {
       { questionId: 'q0', status: 'wrong', timestamp: 1 },
       { questionId: 'q0', status: 'correct', timestamp: 2 },
     ]);
+    const session = await restoreFromRecords('b1', 'sequential', qs);
+    expect(session.results[0]).toBe('correct');
+  });
+
+  it('同一时间戳时按自增 id 取最新记录', async () => {
+    const qs = await seedQuestions('b1', 1);
+    await seedRecords('b1', [
+      { questionId: 'q0', status: 'wrong', timestamp: 1 },
+      { questionId: 'q0', status: 'correct', timestamp: 1 },
+    ]);
+
     const session = await restoreFromRecords('b1', 'sequential', qs);
     expect(session.results[0]).toBe('correct');
   });
