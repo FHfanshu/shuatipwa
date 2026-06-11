@@ -76,10 +76,19 @@ tests/
 | Excel/CSV/JSON 导入 | `tests/services/importService.test.ts` |
 | 数据导出 | `tests/services/exportService.test.ts` |
 | 做题恢复 | `tests/services/practiceService.test.ts` |
+| 做题会话 | `tests/services/practiceSessionStore.test.ts` |
+| AI 服务 | `tests/services/aiService.test.ts` |
 | IndexedDB schema | migration/repository test |
 | 题目 CRUD | `tests/repositories/questionRepo.test.ts` |
 | 应用设置 | `tests/repositories/settingsRepo.test.ts` |
 | AI 解析缓存 | `tests/repositories/aiExplanationRepo.test.ts` |
+| 主题/配色 | `tests/contexts/ThemeContext.test.tsx` |
+| 模型选择 | `tests/components/ModelSelect.test.tsx` |
+| 题目总览筛选 | `tests/components/QuestionOverview.test.tsx` |
+| 工具函数 | `tests/utils/helper.test.ts` |
+| 首页统计 | `tests/pages/HomePage.test.ts` |
+| 导入错误分类 | `tests/pages/ImportPage.test.ts` |
+| 做题页面纯函数 | `tests/pages/PracticePage.test.ts` |
 | PWA 更新 | 手动验证记录 |
 
 ## 回归样例规则
