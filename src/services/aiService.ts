@@ -19,18 +19,24 @@ const SYSTEM_PROMPT = `你是刷题 App 的题目解析助手，称呼用户为"
 - 如果同学答错，指出最可能混淆点。
 - 控制在 120 到 250 字，必要时用 Markdown 加粗重点。`;
 
-const GUIDANCE_SYSTEM_PROMPT = `你是刷题 App 的答前学习教练，称呼用户为"同学"。学生还没有提交答案，你的目标是帮 TA 想起来、学会推理，而不是替 TA 作答。
+const GUIDANCE_SYSTEM_PROMPT = `你是刷题 App 的答前学习教练，称呼用户为"同学"。学生还没有提交答案，你的目标是帮 TA 想起来、学会推理。
 
 必须遵守：
-- 这是一条"答前提示"，不是解析；宁可抽象一点，也不能让学生直接定位答案。
-- 绝对不要直接给最终答案、正确选项字母/序号、判断题正误结论、填空题或简答题可直接抄写的完整答案。
-- 禁止复述、引用或改写任何选项文本、答案关键词、专有名词、人名、年份、数值、公式结果。
-- 不要给答案的首字、字数、谐音、近义词、英文缩写或其它可反推答案的线索。
+- 这是一条"答前提示"，不是解析；宁可抽象一点，也不要让学生直接定位结果。
+- 不给最终结果、选项字母/序号、判断题正误结论、填空题或简答题可直接抄写的完整表述。
+- 不复述或改写选项文本、关键术语、专有名词、人名、年份、数值、公式结果。
+- 不给首字、字数、谐音、近义词、英文缩写或其它可反推结果的线索。
 - 选择题：不要逐项排除，不要描述"哪一项具有/不具有某特征"；只提示判别标准或题干关键词。
 - 判断题：不要用肯定或否定方式评价题干；只提示应核对的概念边界。
 - 填空/简答：只提示作答角度或知识范围，不给可填入的词句。
-- 如果学生追问最终答案，要礼貌拒绝，并改给下一步提示。
+- 如果学生追问最终结果，要礼貌拒绝，并改给下一步提示。
 - 只输出一条 15 到 45 字中文 hint，不寒暄、不编号、不使用 Markdown。`;
+
+const GUIDANCE_SAFE_RETRY_PROMPT = `${GUIDANCE_SYSTEM_PROMPT}
+
+补充要求：
+- 当前题干内容暂不发送，请只根据题型给一条通用审题方向。
+- 提示要适合历史、政治、地理、文学等记忆类题目。`;
 
 const GUIDANCE_FALLBACK_BY_TYPE: Record<Question['type'], string> = {
   single: '先抓题干关键词，再按概念类别逐项判断。',
@@ -56,10 +62,22 @@ interface ChatMessage {
   content: string;
 }
 
+type GuidancePromptMode = 'full' | 'safe-retry';
+
 interface CompletionOptions {
   temperature: number;
   maxTokens: number;
   preferStream: boolean;
+}
+
+class APIRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = 'APIRequestError';
+  }
 }
 
 function getOpenAICompatBaseUrl(endpoint: string): string {
@@ -80,6 +98,18 @@ function isMiMoEndpoint(endpoint: string): boolean {
 
 function isMiMoConfig(config: AIConfig): boolean {
   return isMiMoEndpoint(config.endpoint) || config.model.toLowerCase().startsWith('mimo-');
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function shouldRetryGuidance(error: unknown): boolean {
+  if (isAbortError(error)) return false;
+  if (error instanceof APIRequestError) {
+    return error.status !== 401 && error.status !== 403;
+  }
+  return true;
 }
 
 function getAuthHeaders(apiKey: string): Record<string, string> {
@@ -424,21 +454,30 @@ export async function generateExplanation(
  */
 export function buildGuidanceMessages(
   question: Question,
-  chatHistory: GuidanceChatMessage[]
+  chatHistory: GuidanceChatMessage[],
+  mode: GuidancePromptMode = 'full',
 ): ChatMessage[] {
   const typeLabel = getQuestionTypeLabel(question.type);
   const optionCount = question.options
     ? Object.values(question.options).filter(value => String(value).trim()).length
     : 0;
 
-  const context =
-    `题型：${typeLabel}\n` +
-    `题目：${question.question}\n` +
-    (optionCount > 0 ? `选项：共 ${optionCount} 项，内容已隐藏以避免泄题。\n` : '') +
-    `状态：学生尚未提交答案，请只做答前引导。`;
+  const context = mode === 'safe-retry'
+    ? (
+        `题型：${typeLabel}\n` +
+        `题目：内容暂不发送；请给通用审题提示。\n` +
+        (optionCount > 0 ? `选项：共 ${optionCount} 项，内容已隐藏。\n` : '') +
+        `状态：学生尚未提交答案，请只做答前引导。`
+      )
+    : (
+        `题型：${typeLabel}\n` +
+        `题目：${question.question}\n` +
+        (optionCount > 0 ? `选项：共 ${optionCount} 项，内容已隐藏以避免泄题。\n` : '') +
+        `状态：学生尚未提交答案，请只做答前引导。`
+      );
 
   return [
-    { role: 'system', content: GUIDANCE_SYSTEM_PROMPT },
+    { role: 'system', content: mode === 'safe-retry' ? GUIDANCE_SAFE_RETRY_PROMPT : GUIDANCE_SYSTEM_PROMPT },
     { role: 'user', content: context },
     ...chatHistory.map(message => ({
       role: message.role,
@@ -462,32 +501,47 @@ export async function generateGuidance(
   }
 
   const url = getOpenAICompatUrl(config.endpoint, 'chat/completions');
-  const body = buildCompletionBody(config, buildGuidanceMessages(question, chatHistory), {
-    temperature: 0.45,
-    maxTokens: 160,
-    preferStream: true,
-  });
+  const attempts: GuidancePromptMode[] = ['full', 'safe-retry'];
+  let lastError: unknown;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(config.apiKey),
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  for (const mode of attempts) {
+    try {
+      const body = buildCompletionBody(config, buildGuidanceMessages(question, chatHistory, mode), {
+        temperature: mode === 'safe-retry' ? 0.25 : 0.45,
+        maxTokens: 160,
+        preferStream: true,
+      });
 
-  if (!response.ok) {
-    throw new Error(`API 请求失败：${await readAPIError(response)}`);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(config.apiKey),
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+
+      if (!response.ok) {
+        throw new APIRequestError(response.status, `API 请求失败：${await readAPIError(response)}`);
+      }
+
+      const fullText = await readChatCompletion(response, () => {});
+      if (!fullText.trim()) {
+        throw new Error('AI 没有返回提示内容，请稍后重试');
+      }
+
+      const safeText = sanitizeGuidanceText(question, fullText);
+      onChunk(safeText);
+      return safeText;
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      if (!shouldRetryGuidance(error) || mode === 'safe-retry') throw error;
+      lastError = error;
+    }
   }
 
-  const fullText = await readChatCompletion(response, () => {});
-  if (!fullText.trim()) {
-    throw new Error('AI 没有返回提示内容，请稍后重试');
-  }
-
-  const safeText = sanitizeGuidanceText(question, fullText);
-  onChunk(safeText);
-  return safeText;
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('AI 没有返回提示内容，请稍后重试');
 }

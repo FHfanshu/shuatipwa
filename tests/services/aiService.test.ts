@@ -39,9 +39,9 @@ describe('buildGuidanceMessages', () => {
 
   it('instructs the model not to reveal final answers', () => {
     const messages = buildGuidanceMessages(question(), []);
-    expect(messages[0].content).toContain('绝对不要直接给最终答案');
-    expect(messages[0].content).toContain('正确选项字母');
-    expect(messages[0].content).toContain('禁止复述、引用或改写任何选项文本');
+    expect(messages[0].content).toContain('不给最终结果');
+    expect(messages[0].content).toContain('选项字母/序号');
+    expect(messages[0].content).toContain('不复述或改写选项文本');
   });
 
   it('preserves prior assistant hints so refresh requests can avoid repetition', () => {
@@ -56,6 +56,16 @@ describe('buildGuidanceMessages', () => {
       content: '先区分系统软件和应用软件。',
     });
     expect(messages.at(-1)?.content).toContain('不要重复上一条');
+  });
+
+  it('can build a safe retry prompt without sending the original question text', () => {
+    const messages = buildGuidanceMessages(question(), [], 'safe-retry');
+    const payload = JSON.stringify(messages);
+
+    expect(payload).toContain('题目：内容暂不发送');
+    expect(payload).toContain('通用审题方向');
+    expect(payload).not.toContain('下列哪项属于操作系统？');
+    expect(payload).not.toContain('Windows');
   });
 });
 
@@ -153,6 +163,52 @@ describe('generateGuidance', () => {
 
     expect(result).toBe('先抓题干关键词，再按概念类别逐项判断。');
     expect(chunks).toEqual(['先抓题干关键词，再按概念类别逐项判断。']);
+  });
+
+  it('retries with a safer prompt when the provider rejects the original question', async () => {
+    await db.settings.bulkPut([
+      { key: 'ai_endpoint', value: 'https://api.example.com/v1', updatedAt: 1 },
+      { key: 'ai_apiKey', value: 'key', updatedAt: 1 },
+      { key: 'ai_model', value: 'example-chat', updatedAt: 1 },
+    ]);
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: { message: 'content filtered' } }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ choices: [{ message: { content: '先判断题干考察的是概念、人物还是事件。' } }] }),
+      } as Response);
+
+    const result = await generateGuidance(question(), [], () => {});
+
+    expect(result).toBe('先判断题干考察的是概念、人物还是事件。');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    const secondBody = JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body));
+    expect(JSON.stringify(firstBody.messages)).toContain('下列哪项属于操作系统？');
+    expect(JSON.stringify(secondBody.messages)).toContain('题目：内容暂不发送');
+    expect(JSON.stringify(secondBody.messages)).not.toContain('下列哪项属于操作系统？');
+  });
+
+  it('does not retry authorization failures', async () => {
+    await db.settings.bulkPut([
+      { key: 'ai_endpoint', value: 'https://api.example.com/v1', updatedAt: 1 },
+      { key: 'ai_apiKey', value: 'bad-key', updatedAt: 1 },
+      { key: 'ai_model', value: 'example-chat', updatedAt: 1 },
+    ]);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ error: { message: 'Invalid API Key' } }),
+    } as Response);
+
+    await expect(generateGuidance(question(), [], () => {}))
+      .rejects.toThrow('Invalid API Key');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('reads OpenAI-style SSE chunks for other providers', async () => {
