@@ -143,9 +143,9 @@ describe('random mode navigation', () => {
     // Answer second question correctly and submit
     await answerCorrectly();
 
-    // After auto-advance completes, should show finish screen
+    // After auto-advance completes, should show finish screen with ring gauge
     await waitFor(() => {
-      expect(screen.getByText(/练习完成/)).toBeInTheDocument();
+      expect(screen.getByText('练习结果')).toBeInTheDocument();
     }, { timeout: 2000 });
   });
 
